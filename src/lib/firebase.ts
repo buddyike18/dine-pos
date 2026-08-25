@@ -12,6 +12,7 @@ import type {
   User,
 } from 'firebase/auth';
 import { config } from '../config';
+import { fetchWithTimeout } from './network';
 
 const {
   getAuth,
@@ -235,7 +236,7 @@ export async function getCurrentActor():
     return null;
   }
 
-  const response = await fetch(
+  const response = await fetchWithTimeout(
     `${config.api.baseUrl}/api/auth/me`,
     {
       method: 'GET',
@@ -259,7 +260,34 @@ export async function getCurrentActor():
     );
   }
 
-  return parseCurrentActor(
-    await response.json()
-  );
+  const payload = await response.json();
+
+  if (
+    typeof payload !== 'object' ||
+    payload === null ||
+    typeof (payload as { user?: unknown }).user !== 'object' ||
+    (payload as { user?: unknown }).user === null
+  ) {
+    throw new Error(
+      'Backend returned an invalid actor payload'
+    );
+  }
+
+  const user = (payload as {
+    user: {
+      id?: unknown;
+      firebase_uid?: unknown;
+      restaurant_id?: unknown;
+      role?: unknown;
+      active?: unknown;
+    };
+  }).user;
+
+  return parseCurrentActor({
+    userId: user.id,
+    firebaseUid: user.firebase_uid,
+    restaurantId: user.restaurant_id,
+    role: user.role,
+    active: user.active,
+  });
 }

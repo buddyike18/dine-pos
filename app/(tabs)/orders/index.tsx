@@ -19,6 +19,7 @@ import {
   updateOrderStatus,
 } from '../../../src/lib/api';
 import { config } from '../../../src/config';
+import { fetchWithTimeout } from '../../../src/lib/network';
 
 type OrderStatus = 'SENT' | 'READY' | 'COMPLETED';
 
@@ -141,7 +142,7 @@ async function listOrdersByStatus(opts: { token: string; apiBaseUrl: string; sta
   }
 
   const url = `${apiBaseUrl.replace(/\/$/, '')}/api/orders/status/${encodeURIComponent(status)}`;
-  const res = await fetch(url, {
+  const res = await fetchWithTimeout(url, {
     method: 'GET',
     headers: {
       Authorization: `Bearer ${token}`,

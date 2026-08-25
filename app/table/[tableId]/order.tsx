@@ -7,6 +7,8 @@ import { floorTablesStore } from "../../../src/state/floorTables.store";
 import { resolveHighestPriorityState } from "../../../src/design-system/foundations/statePriority";
 import { createOrder, getApiBase } from "../../../src/lib/api";
 import { getIdToken } from "../../../src/lib/firebase";
+import { config } from '../../../src/config';
+import { fetchWithTimeout } from '../../../src/lib/network';
 
 type PosMenuItem = {
   id: string;
@@ -52,7 +54,6 @@ type MenuCategory = {
   sortOrder: number;
 };
 
-const STATS_RESTAURANT_ID = "9b89d864-5f4d-4971-af66-e4233d3c9dee";
 
 function isUuid(value: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
@@ -106,6 +107,8 @@ export default function OrderingModeScreen() {
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [isSubmittingOrder, setIsSubmittingOrder] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [submissionIdempotencyKey, setSubmissionIdempotencyKey] =
+    useState<string | null>(null);
 
   const [customizingItem, setCustomizingItem] =
     useState<PosMenuItem | null>(null);
@@ -132,13 +135,13 @@ export default function OrderingModeScreen() {
     void (async () => {
       try {
         const apiBase = getApiBase();
-        const encodedRestaurantId = encodeURIComponent(STATS_RESTAURANT_ID);
+        const encodedRestaurantId = encodeURIComponent(config.restaurantId);
 
         const [categoriesResponse, itemsResponse] = await Promise.all([
-          fetch(
+          fetchWithTimeout(
             `${apiBase}/api/menu/categories?restaurant_id=${encodedRestaurantId}`,
           ),
-          fetch(
+          fetchWithTimeout(
             `${apiBase}/api/menu/items?restaurant_id=${encodedRestaurantId}`,
           ),
         ]);
@@ -309,6 +312,7 @@ export default function OrderingModeScreen() {
     item: PosMenuItem,
     modifiers: CartModifierSelection[],
   ) {
+    setSubmissionIdempotencyKey(null);
     const modifierDeltaCents = modifiers.reduce(
       (sum, modifier) => sum + modifier.priceDeltaCents,
       0,
@@ -360,11 +364,11 @@ export default function OrderingModeScreen() {
     setModifierError(null);
 
     try {
-      const response = await fetch(
+      const response = await fetchWithTimeout(
         `${getApiBase()}/api/menu/items/${encodeURIComponent(
           item.id,
         )}/modifier-groups?restaurant_id=${encodeURIComponent(
-          STATS_RESTAURANT_ID,
+          config.restaurantId,
         )}`,
       );
 
@@ -551,6 +555,7 @@ export default function OrderingModeScreen() {
 
   function incrementCartItem(cartKey: string) {
     setSubmitError(null);
+    setSubmissionIdempotencyKey(null);
 
     setCartItems((currentItems) =>
       currentItems.map((item) =>
@@ -563,6 +568,7 @@ export default function OrderingModeScreen() {
 
   function removeMenuItem(cartKey: string) {
     setSubmitError(null);
+    setSubmissionIdempotencyKey(null);
 
     setCartItems((currentItems) =>
       currentItems
@@ -602,15 +608,25 @@ export default function OrderingModeScreen() {
         })),
       }));
 
+      const idempotencyKey =
+        submissionIdempotencyKey ??
+        `pos_${Date.now().toString(16)}_${Math.random().toString(16).slice(2)}`;
+
+      if (!submissionIdempotencyKey) {
+        setSubmissionIdempotencyKey(idempotencyKey);
+      }
+
       await createOrder({
         token,
         body: {
-          restaurant_id: STATS_RESTAURANT_ID,
+          restaurant_id: config.restaurantId,
           table_id: safeTableId,
           items,
         },
+        idempotencyKey,
       });
 
+      setSubmissionIdempotencyKey(null);
       setCartItems([]);
       router.back();
     } catch (error) {

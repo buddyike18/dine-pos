@@ -1,5 +1,6 @@
 import { Platform } from 'react-native';
 import { config } from '../config';
+import { fetchWithTimeout } from './network';
 
 export type ApiErrorKind = 'network' | 'auth' | 'permission' | 'conflict' | 'not_found' | 'server' | 'unknown';
 
@@ -141,16 +142,19 @@ export function pickOrderId(data: any): string | null {
 export async function createOrder(args: {
   token: string;
   body: CreateOrderBody;
-}): Promise<{ orderId: string; raw: any }> {
+  idempotencyKey?: string;
+}): Promise<{ orderId: string; raw: any; idempotencyKey: string }> {
   const { token, body } = args;
+  const key = args.idempotencyKey || randomIdempotencyKey();
 
   const url = buildUrl('/api/orders');
-  const res = await fetch(url, {
+  const res = await fetchWithTimeout(url, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json',
       Accept: 'application/json',
+      'Idempotency-Key': key,
       'X-Client': 'dine-pos',
       'X-Platform': Platform.OS,
     },
@@ -174,7 +178,7 @@ export async function createOrder(args: {
     throw new Error('createOrder succeeded but order id was not returned');
   }
 
-  return { orderId, raw: data };
+  return { orderId, raw: data, idempotencyKey: key };
 }
 
 function randomIdempotencyKey(): string {
@@ -192,7 +196,7 @@ export async function createPaymentIntent(args: {
   const key = args.idempotencyKey || randomIdempotencyKey();
 
   const url = buildUrl('/api/payments/intent');
-  const res = await fetch(url, {
+  const res = await fetchWithTimeout(url, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${token}`,
@@ -279,7 +283,7 @@ export async function getOrderById(orderId: string, token: string): Promise<any>
   }
 
   const url = buildUrl(`/api/orders/${encodeURIComponent(orderId)}`);
-  const res = await fetch(url, {
+  const res = await fetchWithTimeout(url, {
     method: 'GET',
     headers: {
       Authorization: `Bearer ${token}`,
@@ -307,7 +311,7 @@ export async function getOrderEvents(orderId: string, token: string): Promise<an
   const url = buildUrl(
     `/api/orders/${encodeURIComponent(orderId)}/events?cache_bust=${Date.now()}`
   );
-  const res = await fetch(url, {
+  const res = await fetchWithTimeout(url, {
     method: 'GET',
     headers: {
       Authorization: `Bearer ${token}`,
@@ -335,7 +339,7 @@ export async function listKdsActiveOrders(args: {
     ? buildUrl(`/api/orders/kds/active?restaurant_id=${encodeURIComponent(restaurantId)}`)
     : buildUrl('/api/orders/kds/active');
 
-  const res = await fetch(url, {
+  const res = await fetchWithTimeout(url, {
     method: 'GET',
     headers: {
       Authorization: `Bearer ${token}`,
@@ -362,7 +366,7 @@ export async function listActiveOrders(args: {
     ? buildUrl(`/api/orders/active?restaurant_id=${encodeURIComponent(restaurantId)}`)
     : buildUrl('/api/orders/active');
 
-  const res = await fetch(url, {
+  const res = await fetchWithTimeout(url, {
     method: 'GET',
     headers: {
       Authorization: `Bearer ${token}`,
@@ -387,9 +391,8 @@ export async function listTableAssignments(args: {
     ? buildUrl(`/api/table-assignments?restaurant_id=${encodeURIComponent(restaurantId)}`)
     : buildUrl('/api/table-assignments');
 
-  console.warn('[floorboard] table assignments URL', url);
 
-  const res = await fetch(url, {
+  const res = await fetchWithTimeout(url, {
     method: 'GET',
     headers: {
       Authorization: `Bearer ${token}`,
@@ -503,7 +506,7 @@ export async function listOrdersForTable(args: {
     `/api/orders/table/${encodeURIComponent(normalizedTableId)}/active?cache_bust=${Date.now()}`
   );
 
-  const res = await fetch(url, {
+  const res = await fetchWithTimeout(url, {
     method: 'GET',
     headers: {
       Authorization: `Bearer ${token}`,
@@ -539,7 +542,7 @@ export async function listKdsCompletedOrders(args: {
     ? buildUrl(`/api/orders/kds/completed?restaurant_id=${encodeURIComponent(restaurantId)}`)
     : buildUrl('/api/orders/kds/completed');
 
-  const res = await fetch(url, {
+  const res = await fetchWithTimeout(url, {
     method: 'GET',
     headers: {
       Authorization: `Bearer ${token}`,
@@ -567,7 +570,7 @@ export async function listOrdersByStatus(args: {
       )
     : buildUrl(`/api/orders/status/${encodeURIComponent(status)}`);
 
-  const res = await fetch(url, {
+  const res = await fetchWithTimeout(url, {
     method: 'GET',
     headers: {
       Authorization: `Bearer ${token}`,
@@ -594,7 +597,7 @@ export async function updateOrderStatus(args: {
   const { token, orderId, status } = args;
 
   const url = buildUrl(`/api/orders/${encodeURIComponent(orderId)}/status`);
-  const res = await fetch(url, {
+  const res = await fetchWithTimeout(url, {
     method: 'PUT',
     headers: {
       Authorization: `Bearer ${token}`,
@@ -623,7 +626,7 @@ export async function voidOrder(args: {
   const { token, orderId, reason } = args;
 
   const url = buildUrl(`/api/orders/${encodeURIComponent(orderId)}/void`);
-  const res = await fetch(url, {
+  const res = await fetchWithTimeout(url, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${token}`,
@@ -647,7 +650,7 @@ export async function compOrder(args: {
   const { token, orderId, reason } = args;
 
   const url = buildUrl(`/api/orders/${encodeURIComponent(orderId)}/comp`);
-  const res = await fetch(url, {
+  const res = await fetchWithTimeout(url, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${token}`,
@@ -671,7 +674,7 @@ export async function overrideOrderStatus(args: {
   const { token, orderId, body } = args;
 
   const url = buildUrl(`/api/orders/${encodeURIComponent(orderId)}/override-status`);
-  const res = await fetch(url, {
+  const res = await fetchWithTimeout(url, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${token}`,
@@ -695,7 +698,7 @@ export async function markOrderPaid(args: {
   const { token, orderId, payment_method } = args;
 
   const url = buildUrl(`/api/orders/${encodeURIComponent(orderId)}/pay`);
-  const res = await fetch(url, {
+  const res = await fetchWithTimeout(url, {
     method: 'PUT',
     headers: {
       Authorization: `Bearer ${token}`,
@@ -725,7 +728,7 @@ export async function resetTable(args: {
     : '';
 
   const url = buildUrl(`/api/orders/table/${encodeURIComponent(tableId)}/reset${qs}`);
-  const res = await fetch(url, {
+  const res = await fetchWithTimeout(url, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${token}`,
@@ -762,24 +765,8 @@ export function classifyApiError(e: unknown): ApiErrorKind {
   return 'unknown';
 }
 
-async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number) {
-  const controller = new AbortController();
-  const id = setTimeout(() => controller.abort(), timeoutMs);
+const API_REQUEST_TIMEOUT_MS = 15_000;
 
-  try {
-    const res = await fetch(url, { ...init, signal: controller.signal });
-    return res;
-  } finally {
-    clearTimeout(id);
-  }
-}
-
-/**
- * Phase 6.3: Lightweight reachability check.
- * Used to disable POS actions when offline / backend unreachable.
- *
- * Returns true if `/health` responds with 200 within timeout.
- */
 export async function checkBackendReachable(args?: { timeoutMs?: number }): Promise<boolean> {
   const timeoutMs = args?.timeoutMs ?? 2000;
 

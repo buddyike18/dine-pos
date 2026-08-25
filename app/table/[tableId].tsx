@@ -27,6 +27,7 @@ import {
   voidOrder,
   compOrder,
   resetTable,
+  type BackendOrderStatus,
   type ManagerInterventionReason,
   type TableAssignment,
 } from "../../src/lib/api";
@@ -47,7 +48,7 @@ type TimelineRow = {
 
 type TableOrder = {
   id: string;
-  status: string;
+  status: BackendOrderStatus;
   createdAt: string;
   openedAt: string;
   items: Array<{
@@ -96,18 +97,34 @@ function normalizeTableKey(value: unknown) {
   return String(value ?? "").trim().toLowerCase();
 }
 
-function normalizeOrderStatus(value: unknown) {
-  return String(value ?? "UNKNOWN").trim().toUpperCase() || "UNKNOWN";
+function normalizeOrderStatus(value: unknown): BackendOrderStatus {
+  switch (String(value ?? "").trim().toUpperCase()) {
+    case "OPEN":
+      return "OPEN";
+
+    case "SENT":
+      return "SENT";
+
+    case "READY":
+      return "READY";
+
+    case "CLOSED":
+      return "CLOSED";
+
+    case "CANCELLED":
+    case "VOID":
+    case "COMP":
+    case "COMPED":
+      return "CANCELLED";
+
+    default:
+      return "OPEN";
+  }
 }
 
 function isTerminalOrderStatus(status: string) {
   const normalized = normalizeOrderStatus(status);
-  return (
-    normalized === "VOID" ||
-    normalized === "CANCELLED" ||
-    normalized === "COMP" ||
-    normalized === "COMPED"
-  );
+  return normalized === "CLOSED" || normalized === "CANCELLED";
 }
 
 function formatOrderItemName(item: any) {
@@ -204,7 +221,12 @@ function getOrderDisplayLabel(order: TableOrder) {
 }
 
 function shouldConfirmAction(action: AnyOrderAction) {
-  return action === "RECALL" || action === "VOID_ORDER" || action === "COMP_ORDER";
+  return (
+  action === "MARK_READY" ||
+  action === "RECALL" ||
+  action === "VOID_ORDER" ||
+  action === "COMP_ORDER"
+);
 }
 
 function getSuccessMessage(action: AnyOrderAction) {
@@ -342,13 +364,27 @@ function getNextStatusForAction(action: OrderAction): "SENT" | "READY" | "OPEN" 
 async function loadTableOrdersFromBackend(args: {
   token: string;
   tableId: string;
+  eventCache: Map<string, {
+    status: BackendOrderStatus;
+    timelineRows: TimelineRow[];
+  }>;
 }): Promise<TableOrder[]> {
-  const { token, tableId } = args;
+  const { token, tableId, eventCache } = args;
 
   const matchingOrders = await listOrdersForTable({
     token,
     tableId,
   });
+
+  const activeOrderIds = new Set(
+    matchingOrders.map((order) => order.id)
+  );
+
+  for (const cachedOrderId of eventCache.keys()) {
+    if (!activeOrderIds.has(cachedOrderId)) {
+      eventCache.delete(cachedOrderId);
+    }
+  }
 
   const nextOrders = await Promise.all(
     matchingOrders
@@ -375,6 +411,15 @@ async function loadTableOrdersFromBackend(args: {
         return b.id.localeCompare(a.id);
       })
       .map(async (order) => {
+        const cached = eventCache.get(order.id);
+
+        if (cached && cached.status === order.status) {
+          return {
+            ...order,
+            timelineRows: cached.timelineRows,
+          } satisfies TableOrder;
+        }
+
         let events: unknown[] = [];
 
         try {
@@ -405,6 +450,11 @@ async function loadTableOrdersFromBackend(args: {
           .filter((event: TimelineRow | null): event is TimelineRow => event !== null)
           .sort(compareTimelineRows)
           .reverse();
+
+        eventCache.set(order.id, {
+          status: order.status,
+          timelineRows,
+        });
 
         return {
           ...order,
@@ -540,6 +590,7 @@ export default function TableDetailScreen() {
       const nextOrders = await loadTableOrdersFromBackend({
         token,
         tableId: normalizedSafeTableId,
+        eventCache: orderEventCacheRef.current,
       });
 
       setTableOrders(Array.isArray(nextOrders) ? nextOrders : []);
@@ -555,6 +606,12 @@ export default function TableDetailScreen() {
 
   const pendingOrderActionsRef = useRef<PendingOrderActionMap>({});
   const actionRefreshInFlightRef = useRef(false);
+  const orderEventCacheRef = useRef(
+    new Map<string, {
+      status: BackendOrderStatus;
+      timelineRows: TimelineRow[];
+    }>()
+  );
 
   useEffect(() => {
     pendingOrderActionsRef.current = pendingOrderActions;
@@ -753,6 +810,7 @@ export default function TableDetailScreen() {
       const nextOrders = await loadTableOrdersFromBackend({
         token,
         tableId: normalizedSafeTableId,
+        eventCache: orderEventCacheRef.current,
       });
 
       setTableOrders(Array.isArray(nextOrders) ? nextOrders : []);
@@ -783,6 +841,7 @@ export default function TableDetailScreen() {
     }
 
     const requiresManager =
+      action === "MARK_READY" ||
       action === "RECALL" ||
       action === "VOID_ORDER" ||
       action === "COMP_ORDER";
@@ -853,9 +912,12 @@ export default function TableDetailScreen() {
         });
       }
 
+      orderEventCacheRef.current.delete(orderId);
+
       const nextOrders = await loadTableOrdersFromBackend({
         token,
         tableId: normalizedSafeTableId,
+        eventCache: orderEventCacheRef.current,
       });
 
       setTableOrders((current) => {
@@ -966,6 +1028,7 @@ export default function TableDetailScreen() {
         const nextOrders = await loadTableOrdersFromBackend({
           token,
           tableId: normalizedSafeTableId,
+          eventCache: orderEventCacheRef.current,
         });
 
         if (!cancelled) {
