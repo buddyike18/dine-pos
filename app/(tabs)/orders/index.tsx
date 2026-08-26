@@ -47,7 +47,7 @@ function formatMoneyFromOrder(o: Order) {
 
 function shortId(id: string) {
   if (!id) return '';
-  return id.length > 8 ? id.slice(0, 8) : id;
+  return id.replace(/-/g, '').slice(-6).toUpperCase();
 }
 
 function mapBackendStatusToPosStatus(status: string): OrderStatus | null {

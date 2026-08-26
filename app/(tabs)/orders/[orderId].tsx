@@ -178,10 +178,9 @@ export default function OrderDetailsScreen() {
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
-      <Text>DEBUG: {order ? 'ORDER LOADED' : 'NO ORDER'}</Text>
       {/* Header */}
       <View style={styles.card}>
-        <Text style={styles.orderId}>Order #{order.id.slice(0, 6)}</Text>
+        <Text style={styles.orderId}>Order #{order.id.replace(/-/g, '').slice(-6).toUpperCase()}</Text>
         <Text style={styles.status}>{titleCase(order.status)}</Text>
       </View>
 
