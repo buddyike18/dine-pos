@@ -16,7 +16,6 @@ import { getIdToken, getCurrentActor, StaffRole } from '../../../src/lib/firebas
 import {
   checkBackendReachable,
   classifyApiError,
-  updateOrderStatus,
 } from '../../../src/lib/api';
 import { config } from '../../../src/config';
 import { fetchWithTimeout } from '../../../src/lib/network';
@@ -111,26 +110,6 @@ function showLoadError(
     Alert.alert('Orders failed to load', (e as any)?.message || 'Unknown error');
 }
 
-function showActionError(e: unknown) {
-  const kind = classifyApiError(e);
-  if (kind === 'network') {
-    Alert.alert('Offline', 'Backend unreachable. Action not sent.');
-    return;
-  }
-  if (kind === 'auth') {
-    Alert.alert('Not signed in', 'Please sign in again.');
-    return;
-  }
-  if (kind === 'permission') {
-    Alert.alert('No permission', 'Your account is not allowed to update orders.');
-    return;
-  }
-  if (kind === 'conflict') {
-    Alert.alert('Invalid transition', (e as any)?.message || 'Order cannot transition to that status.');
-    return;
-  }
-  Alert.alert('Failed to update order status', (e as any)?.message || 'Unknown error');
-}
 
 // Helper: load orders by status from POS-safe endpoint
 async function listOrdersByStatus(opts: { token: string; apiBaseUrl: string; status: string }) {
@@ -174,13 +153,11 @@ export default function OrdersScreen() {
   const [role, setRole] = useState<StaffRole | 'Unknown'>('Unknown');
 
   // POS must not behave like a kitchen screen. Status actions are manager-scope only.
-  const canAct = role === 'Owner' || role === 'Manager';
 
   const [queueTab, setQueueTab] = useState<OrderStatus>('SENT');
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [inFlightIds, setInFlightIds] = useState<Set<string>>(new Set());
   const [isOnline, setIsOnline] = useState(true);
   const [loadErrorKind, setLoadErrorKind] = useState<
     'network' | 'auth' | 'permission' | 'missing_api' | null
@@ -314,102 +291,6 @@ export default function OrdersScreen() {
     }
   }
 
-  async function handleStatusUpdate(order: Order) {
-    // Phase 6.3: Enforce read-only at action time.
-    if (!canAct) {
-      Alert.alert('Read-only', 'Your role does not allow updating orders.');
-      return;
-    }
-    // Safeguard: never allow actions when offline.
-    if (!isOnline) {
-      Alert.alert('Offline', 'Actions are disabled while offline.');
-      return;
-    }
-
-    if (inFlightIds.has(order.id)) return;
-
-    let newStatusBackend: 'READY' | 'CLOSED' | null = null;
-    let newStatusPos: OrderStatus | null = null;
-
-    if (order.status === 'SENT') {
-      newStatusBackend = 'READY';
-      newStatusPos = 'READY';
-    } else if (order.status === 'READY') {
-      newStatusBackend = 'CLOSED';
-      newStatusPos = 'COMPLETED';
-    } else {
-      return;
-    }
-
-    setInFlightIds((prev) => new Set(prev).add(order.id));
-
-    // Optimistic update: move order to new status (only when online)
-    setOrders((prev) => prev.map((o) => (o.id === order.id ? { ...o, status: newStatusPos! } : o)));
-
-    try {
-      const token = await getIdToken();
-      if (!token) {
-        const err: any = new Error('Not signed in');
-        err.status = 401;
-        throw err;
-      }
-
-      await updateOrderStatus({
-        token,
-        orderId: order.id,
-        status: newStatusBackend,
-      });
-      // Phase 6.8: sync with server truth after successful mutation.
-      await loadQueues(false);
-    } catch (e) {
-      // Rollback optimistic update on failure
-      setOrders((prev) => prev.map((o) => (o.id === order.id ? order : o)));
-      showActionError(e);
-    } finally {
-      setInFlightIds((prev) => {
-        const copy = new Set(prev);
-        copy.delete(order.id);
-        return copy;
-      });
-    }
-  }
-
-  function renderActionButton(o: Order) {
-    const disabled = inFlightIds.has(o.id) || !isOnline || !canAct;
-
-    if (o.status === 'SENT') {
-      return (
-        <TouchableOpacity
-          onPress={() => handleStatusUpdate(o)}
-          disabled={disabled}
-          style={[styles.actionBtn, disabled && styles.actionBtnDisabled]}
-          accessibilityLabel={`Mark order #${shortId(o.id)} as Ready`}
-        >
-          <Text style={[styles.actionBtnText, disabled && styles.actionBtnTextDisabled]}>
-            Mark Ready
-          </Text>
-        </TouchableOpacity>
-      );
-    }
-
-    if (o.status === 'READY') {
-      return (
-        <TouchableOpacity
-          onPress={() => handleStatusUpdate(o)}
-          disabled={disabled}
-          style={[styles.actionBtn, disabled && styles.actionBtnDisabled]}
-          accessibilityLabel={`Mark order #${shortId(o.id)} as Completed`}
-        >
-          <Text style={[styles.actionBtnText, disabled && styles.actionBtnTextDisabled]}>
-            Mark Completed
-          </Text>
-        </TouchableOpacity>
-      );
-    }
-
-    return null;
-  }
-
   function renderOrder(o: Order) {
     const lines = (o.items || []).slice(0, 4).map((it) => {
       const qty = it.quantity ?? it.qty ?? 1;
@@ -441,8 +322,6 @@ export default function OrdersScreen() {
           ))}
           {extra > 0 ? <Text style={styles.itemLine}>+ {extra} more</Text> : null}
         </View>
-
-        <View style={{ marginTop: 12 }}>{renderActionButton(o)}</View>
       </Pressable>
     );
   }
@@ -481,11 +360,7 @@ export default function OrdersScreen() {
           </View>
         ) : !isOnline ? (
           <View style={styles.offlineBanner}>
-            <Text style={styles.offlineText}>Offline — actions disabled</Text>
-          </View>
-        ) : !canAct ? (
-          <View style={styles.readOnlyBanner}>
-            <Text style={styles.readOnlyText}>Read-only — insufficient role ({role})</Text>
+            <Text style={styles.offlineText}>Offline — showing last available order data</Text>
           </View>
         ) : null}
 
@@ -742,23 +617,5 @@ const styles = StyleSheet.create({
   itemLine: {
     fontSize: 14,
     color: '#111111',
-  },
-  actionBtn: {
-    backgroundColor: '#111111',
-    borderRadius: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    alignItems: 'center',
-  },
-  actionBtnDisabled: {
-    backgroundColor: '#999999',
-  },
-  actionBtnText: {
-    color: '#FFFFFF',
-    fontWeight: '700',
-    fontSize: 14,
-  },
-  actionBtnTextDisabled: {
-    color: '#DDDDDD',
   },
 });
