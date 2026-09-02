@@ -1145,7 +1145,7 @@ export default function TableDetailScreen() {
                   {table.label}
                 </TextPrimitive>
                 <TextPrimitive variant="bodyMd" style={{ color: "#4f463b", fontWeight: "700" }}>
-                  {resolvedState.toUpperCase()} • {roleLabel}
+                  Table status: {resolvedState.toUpperCase()} • {roleLabel}
                 </TextPrimitive>
                 {assignedStaffName ? (
                   <TextPrimitive variant="bodySm" style={{ color: "#6f6252", fontWeight: "800" }}>
@@ -1447,7 +1447,7 @@ export default function TableDetailScreen() {
                                                     pendingOrderActions[order.id] === "VOID_ORDER"
                                                   }
                                                   onPress={() => handleActionPress(order.id, "COMP_ORDER")}
-                                                  style={{ backgroundColor: "#efe7d8", borderColor: "#c8bda8", paddingVertical: 4 }}
+                                                  style={{ paddingVertical: 4 }}
                                                 />
                                               </View>
                                               <View style={{ flex: 1 }}>
@@ -1507,7 +1507,7 @@ export default function TableDetailScreen() {
                                               pendingOrderActions[order.id] === "VOID_ORDER"
                                             }
                                             onPress={() => handleActionPress(order.id, "RECALL")}
-                                            style={{ backgroundColor: "#efe7d8", borderColor: "#c8bda8", paddingVertical: 4 }}
+                                            style={{ paddingVertical: 4 }}
                                           />
                                           <Row>
                                             <View style={{ flex: 1, marginRight: 8 }}>
@@ -1521,7 +1521,7 @@ export default function TableDetailScreen() {
                                                   pendingOrderActions[order.id] === "VOID_ORDER"
                                                 }
                                                 onPress={() => handleActionPress(order.id, "COMP_ORDER")}
-                                                style={{ backgroundColor: "#efe7d8", borderColor: "#c8bda8", paddingVertical: 4 }}
+                                                  style={{ paddingVertical: 4 }}
                                               />
                                             </View>
                                             <View style={{ flex: 1 }}>
@@ -1644,7 +1644,7 @@ export default function TableDetailScreen() {
                                         pendingOrderActions[order.id] === "VOID_ORDER"
                                       }
                                       onPress={() => handleActionPress(order.id, "RECALL")}
-                                      style={{ backgroundColor: "#efe7d8", borderColor: "#c8bda8", paddingVertical: 4 }}
+                                            style={{ paddingVertical: 4 }}
                                     />
                                     <Row>
                                       <View style={{ flex: 1, marginRight: 8 }}>
@@ -1658,7 +1658,7 @@ export default function TableDetailScreen() {
                                             pendingOrderActions[order.id] === "VOID_ORDER"
                                           }
                                           onPress={() => handleActionPress(order.id, "COMP_ORDER")}
-                                          style={{ backgroundColor: "#efe7d8", borderColor: "#c8bda8", paddingVertical: 4 }}
+                                                  style={{ paddingVertical: 4 }}
                                         />
                                       </View>
                                       <View style={{ flex: 1 }}>
@@ -1743,7 +1743,7 @@ export default function TableDetailScreen() {
           >
             <Stack gap={2}>
               <ButtonPrimitive
-                hierarchy="secondary"
+                hierarchy="primary"
                 label={hasUnsafeConnectionState ? "Ordering Locked" : "Ordering Mode"}
                 disabled={hasUnsafeConnectionState}
                 onPress={() => router.push(`/table/${safeTableId}/order`)}
