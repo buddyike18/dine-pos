@@ -112,6 +112,33 @@ export type BackendOrder = {
   created_at?: string;
 };
 
+export type BarChair = {
+  id: string;
+  chair_number: number;
+  display_name: string | null;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type BarCheckStatus = 'OPEN' | 'CLOSED' | 'VOIDED';
+
+export type BarCheck = {
+  id: string;
+  restaurant_id: string;
+  bar_chair_id: string | null;
+  opened_by_user_id: string;
+  closed_by_user_id: string | null;
+  display_name: string | null;
+  status: BarCheckStatus;
+  opened_at: string;
+  closed_at: string | null;
+  created_at: string;
+  updated_at: string;
+  chair_number: number | null;
+  chair_display_name: string | null;
+};
+
 export type TableAssignment = {
   id?: string;
   restaurant_id?: string;
@@ -379,6 +406,56 @@ export async function listActiveOrders(args: {
   const data = await getJsonOrThrow(res, 'listActiveOrders');
 
   return extractArrayOrThrow(data, 'listActiveOrders', [['active_orders'], ['orders'], []]) as BackendOrder[];
+}
+
+export async function listBarChairs(args: {
+  token: string;
+}): Promise<BarChair[]> {
+  const response = await fetchWithTimeout(
+    buildUrl('/api/bar/chairs'),
+    {
+      headers: {
+        Accept: 'application/json',
+        Authorization: `Bearer ${args.token}`,
+        'X-Dine-Client': 'pos',
+        'X-Dine-Platform': Platform.OS,
+      },
+    }
+  );
+
+  const data = await getJsonOrThrow(response, 'list_bar_chairs');
+  return extractArrayOrThrow(
+    data,
+    'list_bar_chairs',
+    [['chairs']]
+  ) as BarChair[];
+}
+
+export async function listBarChecks(args: {
+  token: string;
+  status?: BarCheckStatus;
+}): Promise<BarCheck[]> {
+  const status = args.status ?? 'OPEN';
+  const response = await fetchWithTimeout(
+    buildUrl(
+      `/api/bar/checks?status=${encodeURIComponent(status)}`
+    ),
+    {
+      headers: {
+        Accept: 'application/json',
+        Authorization: `Bearer ${args.token}`,
+        'X-Dine-Client': 'pos',
+        'X-Dine-Platform': Platform.OS,
+      },
+    }
+  );
+
+  const data = await getJsonOrThrow(response, 'list_bar_checks');
+  return extractArrayOrThrow(
+    data,
+    'list_bar_checks',
+    [['checks']]
+  ) as BarCheck[];
 }
 
 export async function listTableAssignments(args: {
