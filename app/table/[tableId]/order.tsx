@@ -664,17 +664,6 @@ export default function OrderingModeScreen() {
             <View style={{ gap: 4 }}>
               <Text
                 style={{
-                  color: "#111111",
-                  fontSize: 26,
-                  lineHeight: 32,
-                  fontWeight: "700",
-                }}
-              >
-                Ordering Mode
-              </Text>
-
-              <Text
-                style={{
                   color: "#6f6252",
                   fontSize: 15,
                   lineHeight: 20,
@@ -737,6 +726,198 @@ export default function OrderingModeScreen() {
                 padding: 14,
               }}
             >
+            {customizingItem || modifierLoading ? (
+              <View style={{ flex: 1, gap: 10 }}>
+                {customizingItem ? (
+                  <View style={{ flex: 1 }}>
+                    <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 12 }}>
+                    <View style={{ gap: 10 }}>
+                      <View
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          gap: 12,
+                        }}
+                      >
+                        <Pressable
+                          onPress={cancelCustomization}
+                          style={{
+                            borderWidth: 1,
+                            borderColor: "#c8bda8",
+                            borderRadius: 8,
+                            paddingHorizontal: 12,
+                            paddingVertical: 8,
+                          }}
+                        >
+                          <Text style={{ fontWeight: "700", color: "#4f463b" }}>
+                            ← Back to Menu
+                          </Text>
+                        </Pressable>
+
+                        <Text
+                          style={{
+                            flex: 1,
+                            fontSize: 18,
+                            fontWeight: "700",
+                            color: "#111111",
+                          }}
+                        >
+                          Customize {customizingItem.name}
+                        </Text>
+                      </View>
+
+                      {modifierGroups.map((group) => {
+                        const selected = selectedOptions[group.id] ?? [];
+
+                        return (
+                          <View
+                            key={group.id}
+                            style={{
+                              borderTopWidth: 1,
+                              borderColor: "#c8bda8",
+                              paddingTop: 10,
+                              gap: 8,
+                            }}
+                          >
+                            <Text
+                              style={{
+                                color: "#111111",
+                                fontWeight: "700",
+                              }}
+                            >
+                              {group.name}
+                            </Text>
+
+                            <Text
+                              style={{
+                                color: "#6f6252",
+                                fontSize: 12,
+                              }}
+                            >
+                              {group.minSelect > 0
+                                ? `Choose at least ${group.minSelect}`
+                                : "Optional"}{" "}
+                              • Up to {group.maxSelect}
+                            </Text>
+
+                            <View
+                              style={{
+                                flexDirection: "row",
+                                flexWrap: "wrap",
+                                gap: 8,
+                              }}
+                            >
+                              {group.options.map((option) => {
+                                const isSelected = selected.includes(option.id);
+
+                                return (
+                                  <Pressable
+                                    key={option.id}
+                                    onPress={() =>
+                                      toggleModifierOption(group, option.id)
+                                    }
+                                    style={{
+                                      width: "49%",
+                                      borderWidth: 1,
+                                      borderColor: isSelected
+                                        ? "#4f463b"
+                                        : "#c8bda8",
+                                      borderRadius: 8,
+                                      padding: 10,
+                                      backgroundColor: isSelected
+                                        ? "#efe7d8"
+                                        : "#fffaf2",
+                                      flexDirection: "row",
+                                      justifyContent: "space-between",
+                                      alignItems: "center",
+                                      gap: 8,
+                                    }}
+                                  >
+                                    <Text
+                                      style={{
+                                        color: "#111111",
+                                        fontWeight: "700",
+                                        flexShrink: 1,
+                                      }}
+                                    >
+                                      {isSelected ? "✓ " : ""}
+                                      {option.name}
+                                    </Text>
+
+                                    {option.priceDeltaCents > 0 ? (
+                                      <Text
+                                        style={{
+                                          color: "#4f463b",
+                                          fontWeight: "700",
+                                        }}
+                                      >
+                                        +{formatCurrency(option.priceDeltaCents)}
+                                      </Text>
+                                    ) : null}
+                                  </Pressable>
+                                );
+                              })}
+                            </View>
+                          </View>
+                        );
+                      })}
+
+                      {modifierError ? (
+                        <Text
+                          style={{
+                            color: "#4f463b",
+                            fontWeight: "700",
+                          }}
+                        >
+                          {modifierError}
+                        </Text>
+                      ) : null}
+
+                    </View>
+                  </ScrollView>
+
+                  <View
+                    style={{
+                      borderTopWidth: 1,
+                      borderColor: "#c8bda8",
+                      paddingTop: 10,
+                    }}
+                  >
+                    <Pressable
+                      onPress={confirmCustomization}
+                      style={{
+                        borderWidth: 1,
+                        borderColor: "#4f463b",
+                        backgroundColor: "#4f463b",
+                        borderRadius: 8,
+                        padding: 12,
+                        alignItems: "center",
+                      }}
+                    >
+                      <Text
+                        style={{
+                          color: "#fffaf2",
+                          fontWeight: "700",
+                        }}
+                      >
+                        Add
+                      </Text>
+                    </Pressable>
+                  </View>
+                  </View>
+                ) : null}
+
+                {modifierLoading ? (
+                  <Text style={{ color: "#6f6252", fontWeight: "700" }}>
+                    Loading customization options...
+                  </Text>
+                ) : null}
+
+              </View>
+            ) : (
+              <>
+
               <View style={{ flex: 1, gap: 10 }}>
                 <Text
                   style={{
@@ -968,6 +1149,8 @@ export default function OrderingModeScreen() {
                   })}
                 </ScrollView>
               </View>
+              </>
+            )}
             </View>
 
             <View
@@ -981,161 +1164,6 @@ export default function OrderingModeScreen() {
               }}
             >
               <View style={{ flex: 1, gap: 10 }}>
-                {customizingItem ? (
-                  <ScrollView style={{ maxHeight: 360 }}>
-                    <View style={{ gap: 10 }}>
-                      <Text
-                        style={{
-                          fontSize: 18,
-                          fontWeight: "700",
-                          color: "#111111",
-                        }}
-                      >
-                        Customize {customizingItem.name}
-                      </Text>
-
-                      {modifierGroups.map((group) => {
-                        const selected = selectedOptions[group.id] ?? [];
-
-                        return (
-                          <View
-                            key={group.id}
-                            style={{
-                              borderTopWidth: 1,
-                              borderColor: "#c8bda8",
-                              paddingTop: 10,
-                              gap: 8,
-                            }}
-                          >
-                            <Text
-                              style={{
-                                color: "#111111",
-                                fontWeight: "700",
-                              }}
-                            >
-                              {group.name}
-                            </Text>
-
-                            <Text
-                              style={{
-                                color: "#6f6252",
-                                fontSize: 12,
-                              }}
-                            >
-                              {group.minSelect > 0
-                                ? `Choose at least ${group.minSelect}`
-                                : "Optional"}{" "}
-                              • Up to {group.maxSelect}
-                            </Text>
-
-                            {group.options.map((option) => {
-                              const isSelected = selected.includes(option.id);
-
-                              return (
-                                <Pressable
-                                  key={option.id}
-                                  onPress={() =>
-                                    toggleModifierOption(group, option.id)
-                                  }
-                                  style={{
-                                    borderWidth: 1,
-                                    borderColor: isSelected
-                                      ? "#4f463b"
-                                      : "#c8bda8",
-                                    borderRadius: 8,
-                                    padding: 9,
-                                    backgroundColor: isSelected
-                                      ? "#efe7d8"
-                                      : "#fffaf2",
-                                    flexDirection: "row",
-                                    justifyContent: "space-between",
-                                  }}
-                                >
-                                  <Text
-                                    style={{
-                                      color: "#111111",
-                                      fontWeight: "700",
-                                    }}
-                                  >
-                                    {isSelected ? "✓ " : ""}
-                                    {option.name}
-                                  </Text>
-
-                                  {option.priceDeltaCents > 0 ? (
-                                    <Text
-                                      style={{
-                                        color: "#4f463b",
-                                        fontWeight: "700",
-                                      }}
-                                    >
-                                      +{formatCurrency(option.priceDeltaCents)}
-                                    </Text>
-                                  ) : null}
-                                </Pressable>
-                              );
-                            })}
-                          </View>
-                        );
-                      })}
-
-                      {modifierError ? (
-                        <Text
-                          style={{
-                            color: "#4f463b",
-                            fontWeight: "700",
-                          }}
-                        >
-                          {modifierError}
-                        </Text>
-                      ) : null}
-
-                      <View style={{ flexDirection: "row", gap: 8 }}>
-                        <Pressable
-                          onPress={cancelCustomization}
-                          style={{
-                            flex: 1,
-                            borderWidth: 1,
-                            borderColor: "#c8bda8",
-                            borderRadius: 8,
-                            padding: 10,
-                            alignItems: "center",
-                          }}
-                        >
-                          <Text style={{ fontWeight: "700" }}>Cancel</Text>
-                        </Pressable>
-
-                        <Pressable
-                          onPress={confirmCustomization}
-                          style={{
-                            flex: 1,
-                            borderWidth: 1,
-                            borderColor: "#4f463b",
-                            backgroundColor: "#4f463b",
-                            borderRadius: 8,
-                            padding: 10,
-                            alignItems: "center",
-                          }}
-                        >
-                          <Text
-                            style={{
-                              color: "#fffaf2",
-                              fontWeight: "700",
-                            }}
-                          >
-                            Add
-                          </Text>
-                        </Pressable>
-                      </View>
-                    </View>
-                  </ScrollView>
-                ) : null}
-
-                {modifierLoading ? (
-                  <Text style={{ color: "#6f6252", fontWeight: "700" }}>
-                    Loading customization options...
-                  </Text>
-                ) : null}
-
                 <Text
                   style={{
                     color: "#111111",
@@ -1312,8 +1340,8 @@ export default function OrderingModeScreen() {
               </View>
             </View>
           </View>
-        </View>
       </View>
+    </View>
     </FullScreenModeContainer>
   );
 }
