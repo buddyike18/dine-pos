@@ -715,7 +715,7 @@ export default function TableDetailScreen() {
     ? "Complete or close all orders before resetting"
     : null;
   const hasUnsafeConnectionState = Boolean(timelineError && tableOrders.length > 0);
-  const isManager = uiRole === "Owner" || uiRole === "Manager";
+  const isManager = uiRole === "Manager";
   const roleLabel = roleLoading
     ? "Checking role"
     : isManager

@@ -62,7 +62,7 @@ export default function RootScreen() {
       return [];
     }
 
-    if (uiRole === 'Owner' || uiRole === 'Manager') {
+    if (uiRole === 'Manager') {
       return undefined;
     }
 

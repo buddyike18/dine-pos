@@ -167,7 +167,6 @@ export async function getIdToken(
 }
 
 export type StaffRole =
-  | 'Owner'
   | 'Manager'
   | 'Employee';
 
@@ -183,7 +182,6 @@ function isStaffRole(
   value: unknown
 ): value is StaffRole {
   return (
-    value === 'Owner' ||
     value === 'Manager' ||
     value === 'Employee'
   );
