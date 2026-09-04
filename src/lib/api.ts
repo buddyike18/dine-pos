@@ -458,6 +458,153 @@ export async function listBarChecks(args: {
   ) as BarCheck[];
 }
 
+function extractBarResourceOrThrow<T>(
+  data: any,
+  key: 'chair' | 'check',
+  op: string
+): T {
+  const resource = data?.[key];
+
+  if (!resource || typeof resource !== 'object' || Array.isArray(resource)) {
+    console.warn(`[api] ${op}: malformed successful response`, data);
+    throw new Error(`Malformed ${op} response`);
+  }
+
+  return resource as T;
+}
+
+export async function createBarChair(args: {
+  token: string;
+  chairNumber: number;
+  displayName?: string | null;
+}): Promise<BarChair> {
+  const res = await fetchWithTimeout(buildUrl('/api/bar/chairs'), {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${args.token}`,
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+      'X-Dine-Client': 'pos',
+      'X-Dine-Platform': Platform.OS,
+    },
+    body: JSON.stringify({
+      chair_number: args.chairNumber,
+      ...(args.displayName !== undefined
+        ? { display_name: args.displayName }
+        : {}),
+    }),
+  });
+
+  const data = await getJsonOrThrow(res, 'create_bar_chair');
+  return extractBarResourceOrThrow<BarChair>(
+    data,
+    'chair',
+    'create_bar_chair'
+  );
+}
+
+export async function updateBarChair(args: {
+  token: string;
+  chairId: string;
+  displayName?: string | null;
+  active?: boolean;
+}): Promise<BarChair> {
+  const res = await fetchWithTimeout(
+    buildUrl(`/api/bar/chairs/${encodeURIComponent(args.chairId)}`),
+    {
+      method: 'PATCH',
+      headers: {
+        Authorization: `Bearer ${args.token}`,
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        'X-Dine-Client': 'pos',
+        'X-Dine-Platform': Platform.OS,
+      },
+      body: JSON.stringify({
+        ...(args.displayName !== undefined
+          ? { display_name: args.displayName }
+          : {}),
+        ...(args.active !== undefined ? { active: args.active } : {}),
+      }),
+    }
+  );
+
+  const data = await getJsonOrThrow(res, 'update_bar_chair');
+  return extractBarResourceOrThrow<BarChair>(
+    data,
+    'chair',
+    'update_bar_chair'
+  );
+}
+
+export async function createBarCheck(args: {
+  token: string;
+  barChairId?: string | null;
+  displayName?: string | null;
+}): Promise<BarCheck> {
+  const res = await fetchWithTimeout(buildUrl('/api/bar/checks'), {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${args.token}`,
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+      'X-Dine-Client': 'pos',
+      'X-Dine-Platform': Platform.OS,
+    },
+    body: JSON.stringify({
+      ...(args.barChairId !== undefined
+        ? { bar_chair_id: args.barChairId }
+        : {}),
+      ...(args.displayName !== undefined
+        ? { display_name: args.displayName }
+        : {}),
+    }),
+  });
+
+  const data = await getJsonOrThrow(res, 'create_bar_check');
+  return extractBarResourceOrThrow<BarCheck>(
+    data,
+    'check',
+    'create_bar_check'
+  );
+}
+
+export async function updateBarCheck(args: {
+  token: string;
+  checkId: string;
+  barChairId?: string | null;
+  displayName?: string | null;
+}): Promise<BarCheck> {
+  const res = await fetchWithTimeout(
+    buildUrl(`/api/bar/checks/${encodeURIComponent(args.checkId)}`),
+    {
+      method: 'PATCH',
+      headers: {
+        Authorization: `Bearer ${args.token}`,
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        'X-Dine-Client': 'pos',
+        'X-Dine-Platform': Platform.OS,
+      },
+      body: JSON.stringify({
+        ...(args.barChairId !== undefined
+          ? { bar_chair_id: args.barChairId }
+          : {}),
+        ...(args.displayName !== undefined
+          ? { display_name: args.displayName }
+          : {}),
+      }),
+    }
+  );
+
+  const data = await getJsonOrThrow(res, 'update_bar_check');
+  return extractBarResourceOrThrow<BarCheck>(
+    data,
+    'check',
+    'update_bar_check'
+  );
+}
+
 export async function listTableAssignments(args: {
   token: string;
   restaurantId?: string;
