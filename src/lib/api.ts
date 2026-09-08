@@ -55,7 +55,9 @@ export type CreateOrderItem = {
 
 export type CreateOrderBody = {
   restaurant_id: string;
-  table_id?: string;
+  table_id?: string | null;
+  check_id?: string | null;
+  type?: 'DINE_IN' | 'QUICK';
   items: CreateOrderItem[];
 };
 
@@ -99,7 +101,8 @@ export type BackendOrderItem = {
 export type BackendOrder = {
   id: string;
   status: BackendOrderStatus;
-  table_id?: string;
+  table_id?: string | null;
+  check_id?: string | null;
   opened_at?: string;
   items?: BackendOrderItem[];
   line_items?: BackendOrderItem[];
@@ -137,6 +140,12 @@ export type BarCheck = {
   updated_at: string;
   chair_number: number | null;
   chair_display_name: string | null;
+  order_count: number;
+  total_cents: number;
+  paid_cents: number;
+  comped_cents: number;
+  amount_owed_cents: number;
+  payment_state: 'UNPAID' | 'PARTIAL' | 'PAID' | 'COMPED';
 };
 
 export type TableAssignment = {
@@ -163,8 +172,8 @@ export function pickOrderId(data: any): string | null {
 }
 
 /**
- * Phase 8.1: POS order creation must preserve table context.
- * Callers creating an order from a table surface should pass `table_id`.
+ * POS order creation preserves its service context.
+ * Table orders pass `table_id`; bar-tab rounds pass `check_id`.
  */
 export async function createOrder(args: {
   token: string;
@@ -566,6 +575,155 @@ export async function createBarCheck(args: {
     data,
     'check',
     'create_bar_check'
+  );
+}
+
+export async function listBarCheckOrders({
+  token,
+  checkId,
+}: {
+  token: string;
+  checkId: string;
+}): Promise<BackendOrder[]> {
+  const res = await fetchWithTimeout(
+    buildUrl(`/api/bar/checks/${encodeURIComponent(checkId)}/orders`),
+    {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/json',
+        'X-Dine-Client': 'pos',
+        'X-Dine-Platform': Platform.OS,
+      },
+    }
+  );
+
+  const data = await getJsonOrThrow(res, 'list_bar_check_orders');
+
+  if (
+    !data ||
+    typeof data !== 'object' ||
+    !Array.isArray((data as { orders?: unknown }).orders)
+  ) {
+    throw new Error(
+      'list_bar_check_orders: invalid response payload.'
+    );
+  }
+
+  return (data as { orders: BackendOrder[] }).orders;
+}
+
+export async function getBarCheck({
+  token,
+  checkId,
+}: {
+  token: string;
+  checkId: string;
+}): Promise<BarCheck> {
+  const res = await fetchWithTimeout(
+    buildUrl(`/api/bar/checks/${encodeURIComponent(checkId)}`),
+    {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/json',
+        'X-Dine-Client': 'pos',
+        'X-Dine-Platform': Platform.OS,
+      },
+    }
+  );
+
+  const data = await getJsonOrThrow(res, 'get_bar_check');
+
+  return extractBarResourceOrThrow<BarCheck>(
+    data,
+    'check',
+    'get_bar_check'
+  );
+}
+
+export type BarCheckPaymentIntentResponse = {
+  paymentIntentId: string;
+  paymentIntentClientSecret?: string;
+  amountCents: number;
+  reused: boolean;
+  paymentCompleted?: boolean;
+  reconciled?: boolean;
+};
+
+export async function createBarCheckPaymentIntent({
+  token,
+  checkId,
+  idempotencyKey,
+}: {
+  token: string;
+  checkId: string;
+  idempotencyKey: string;
+}): Promise<BarCheckPaymentIntentResponse> {
+  const res = await fetchWithTimeout(
+    buildUrl(
+      `/api/bar/checks/${encodeURIComponent(checkId)}/payment-intent`
+    ),
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        'Idempotency-Key': idempotencyKey,
+        'X-Dine-Client': 'pos',
+        'X-Dine-Platform': Platform.OS,
+      },
+      body: JSON.stringify({}),
+    }
+  );
+
+  const data = await getJsonOrThrow(
+    res,
+    'create_bar_check_payment_intent'
+  );
+
+  if (
+    !data ||
+    typeof data !== 'object' ||
+    typeof (data as any).paymentIntentId !== 'string' ||
+    typeof (data as any).amountCents !== 'number'
+  ) {
+    throw new Error(
+      'create_bar_check_payment_intent: invalid response payload.'
+    );
+  }
+
+  return data as BarCheckPaymentIntentResponse;
+}
+
+export async function closeBarCheck({
+  token,
+  checkId,
+}: {
+  token: string;
+  checkId: string;
+}): Promise<BarCheck> {
+  const res = await fetchWithTimeout(
+    buildUrl(`/api/bar/checks/${encodeURIComponent(checkId)}/close`),
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        'X-Dine-Client': 'pos',
+        'X-Dine-Platform': Platform.OS,
+      },
+    }
+  );
+
+  const data = await getJsonOrThrow(res, 'close_bar_check');
+
+  return extractBarResourceOrThrow<BarCheck>(
+    data,
+    'check',
+    'close_bar_check'
   );
 }
 
