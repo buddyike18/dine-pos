@@ -1,13 +1,13 @@
+import { useStripe } from '@stripe/stripe-react-native';
+import * as Linking from 'expo-linking';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -16,10 +16,10 @@ import {
   BackendOrder,
   BarCheck,
   closeBarCheck,
+  createBarCheckPaymentIntent,
   getBarCheck,
   isUuid,
   listBarCheckOrders,
-  updateBarCheck,
 } from '../../../../src/lib/api';
 import { getIdToken } from '../../../../src/lib/firebase';
 
@@ -42,6 +42,10 @@ function orderItems(order: BackendOrder) {
 
 export default function BarCheckSummaryRoute() {
   const router = useRouter();
+  const {
+    initPaymentSheet,
+    presentPaymentSheet,
+  } = useStripe();
   const params = useLocalSearchParams<{
     checkId?: string | string[];
   }>();
@@ -56,10 +60,7 @@ export default function BarCheckSummaryRoute() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  const [renameVisible, setRenameVisible] = useState(false);
-  const [renameValue, setRenameValue] = useState('');
-  const [renameSaving, setRenameSaving] = useState(false);
-  const [renameError, setRenameError] = useState<string | null>(null);
+  const [paymentRunning, setPaymentRunning] = useState(false);
 
   const [closeRunning, setCloseRunning] = useState(false);
   const [closeError, setCloseError] = useState<string | null>(null);
@@ -135,47 +136,158 @@ export default function BarCheckSummaryRoute() {
     return value || seatLabel;
   }, [check?.display_name, seatLabel]);
 
-  const openRename = () => {
-    if (!check) {
-      return;
-    }
+  const refreshAuthoritativeCheck = async (
+    token: string
+  ): Promise<BarCheck> => {
+    const fresh = await getBarCheck({
+      token,
+      checkId,
+    });
 
-    setRenameValue(check.display_name?.trim() ?? '');
-    setRenameError(null);
-    setRenameVisible(true);
+    setCheck(fresh);
+    return fresh;
   };
 
-  const saveRename = async () => {
-    if (!check || renameSaving) {
+  const finishSettledPayment = async (
+    token: string
+  ): Promise<boolean> => {
+    for (let attempt = 0; attempt < 12; attempt += 1) {
+      const fresh = await refreshAuthoritativeCheck(token);
+
+      const amountOwedCents =
+        Number(fresh.amount_owed_cents ?? 0);
+
+      if (
+        Number.isFinite(amountOwedCents)
+        && amountOwedCents <= 0
+      ) {
+        if (fresh.status === 'OPEN') {
+          const closed = await closeBarCheck({
+            token,
+            checkId,
+          });
+
+          setCheck(closed);
+        }
+
+        await loadSummary();
+        return true;
+      }
+
+      await new Promise((resolve) => {
+        setTimeout(resolve, 500);
+      });
+    }
+
+    return false;
+  };
+
+  const payTab = async () => {
+    if (
+      paymentRunning
+      || !check
+      || !isUuid(checkId)
+    ) {
       return;
     }
 
-    setRenameSaving(true);
-    setRenameError(null);
+    setPaymentRunning(true);
 
     try {
-      const token = await getIdToken();
+      const token = await getIdToken(true);
 
       if (!token) {
-        throw new Error('Staff authentication is required.');
+        throw new Error(
+          'Staff authentication is required.'
+        );
       }
 
-      const updated = await updateBarCheck({
+      const payment = await createBarCheckPaymentIntent({
         token,
-        checkId: check.id,
-        displayName: renameValue.trim() || null,
+        checkId,
+        idempotencyKey:
+          `pos-bar-check-${checkId}-${Date.now()}`,
       });
 
-      setCheck(updated);
-      setRenameVisible(false);
+      if (payment.paymentCompleted === true) {
+        const settled = await finishSettledPayment(token);
+
+        if (!settled) {
+          Alert.alert(
+            'Payment received',
+            'The payment succeeded, but the tab is still settling. '
+              + 'Do not submit another payment yet.'
+          );
+        }
+
+        return;
+      }
+
+      const clientSecret =
+        payment.paymentIntentClientSecret;
+
+      if (!clientSecret) {
+        throw new Error(
+          'Stripe payment client secret was not returned.'
+        );
+      }
+
+      const returnURL =
+        Linking.createURL('stripe-return');
+
+      const {
+        error: initError,
+      } = await initPaymentSheet({
+        merchantDisplayName: 'Dine',
+        paymentIntentClientSecret:
+          clientSecret,
+        returnURL,
+      });
+
+      if (initError) {
+        throw new Error(
+          initError.message
+          || 'Unable to initialize payment.'
+        );
+      }
+
+      const {
+        error: paymentError,
+      } = await presentPaymentSheet();
+
+      if (paymentError) {
+        if (
+          String(paymentError.code)
+            .toLowerCase()
+            .includes('cancel')
+        ) {
+          return;
+        }
+
+        throw new Error(
+          paymentError.message
+          || 'Unable to complete payment.'
+        );
+      }
+
+      const settled = await finishSettledPayment(token);
+
+      if (!settled) {
+        Alert.alert(
+          'Payment submitted',
+          'Stripe accepted the payment, but Dine is still waiting '
+            + 'for authoritative settlement. Do not submit the tab again yet.'
+        );
+      }
     } catch (error) {
-      setRenameError(
+      Alert.alert(
+        'Unable to Pay Tab',
         error instanceof Error
           ? error.message
-          : 'Unable to rename this tab.'
+          : 'Unable to complete this tab payment.'
       );
     } finally {
-      setRenameSaving(false);
+      setPaymentRunning(false);
     }
   };
 
@@ -428,9 +540,10 @@ export default function BarCheckSummaryRoute() {
           </View>
         ) : null}
 
-        <View style={styles.actions}>
-          <Pressable
-            onPress={() =>
+        {check.status === 'OPEN' ? (
+          <View style={styles.actions}>
+            <Pressable
+              onPress={() =>
               router.push({
                 pathname: '/bar/check/[checkId]/order',
                 params: {
@@ -454,7 +567,8 @@ export default function BarCheckSummaryRoute() {
 
           <View style={styles.secondaryActions}>
             <Pressable
-              onPress={openRename}
+              onPress={() => { void payTab(); }}
+              disabled={paymentRunning || !check}
               style={({ pressed }) => [
                 styles.secondaryButton,
                 styles.secondaryAction,
@@ -462,7 +576,7 @@ export default function BarCheckSummaryRoute() {
               ]}
             >
               <Text style={styles.secondaryButtonText}>
-                Rename Tab
+                Pay Tab
               </Text>
             </Pressable>
 
@@ -484,79 +598,11 @@ export default function BarCheckSummaryRoute() {
                 </Text>
               )}
             </Pressable>
-          </View>
-        </View>
-      </ScrollView>
-
-      <Modal
-        animationType="fade"
-        transparent
-        visible={renameVisible}
-        onRequestClose={() => {
-          if (!renameSaving) {
-            setRenameVisible(false);
-          }
-        }}
-      >
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Rename Tab</Text>
-
-            <Text style={styles.modalSubtitle}>
-              Enter a name for this bar tab.
-            </Text>
-
-            <TextInput
-              autoFocus
-              editable={!renameSaving}
-              maxLength={80}
-              onChangeText={setRenameValue}
-              placeholder={seatLabel}
-              value={renameValue}
-              style={styles.input}
-            />
-
-            {renameError ? (
-              <Text style={styles.modalError}>
-                {renameError}
-              </Text>
-            ) : null}
-
-            <View style={styles.modalActions}>
-              <Pressable
-                disabled={renameSaving}
-                onPress={() => setRenameVisible(false)}
-                style={({ pressed }) => [
-                  styles.modalSecondaryButton,
-                  pressed && styles.pressed,
-                ]}
-              >
-                <Text style={styles.modalSecondaryText}>
-                  Cancel
-                </Text>
-              </Pressable>
-
-              <Pressable
-                disabled={renameSaving}
-                onPress={() => void saveRename()}
-                style={({ pressed }) => [
-                  styles.modalPrimaryButton,
-                  pressed && styles.pressed,
-                  renameSaving && styles.disabled,
-                ]}
-              >
-                {renameSaving ? (
-                  <ActivityIndicator size="small" />
-                ) : (
-                  <Text style={styles.modalPrimaryText}>
-                    Save
-                  </Text>
-                )}
-              </Pressable>
             </View>
           </View>
-        </View>
-      </Modal>
+        ) : null}
+      </ScrollView>
+
     </View>
   );
 }
@@ -864,79 +910,5 @@ const styles = StyleSheet.create({
   },
   disabled: {
     opacity: 0.5,
-  },
-  modalBackdrop: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(0,0,0,0.35)',
-    padding: 24,
-  },
-  modalCard: {
-    width: '100%',
-    maxWidth: 440,
-    borderRadius: 16,
-    backgroundColor: '#ffffff',
-    padding: 22,
-  },
-  modalTitle: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: '#171512',
-  },
-  modalSubtitle: {
-    marginTop: 5,
-    fontSize: 14,
-    color: '#746b60',
-  },
-  input: {
-    marginTop: 18,
-    minHeight: 48,
-    borderWidth: 1,
-    borderColor: '#c8bda8',
-    borderRadius: 9,
-    backgroundColor: '#ffffff',
-    paddingHorizontal: 13,
-    fontSize: 16,
-    color: '#171512',
-  },
-  modalError: {
-    marginTop: 9,
-    fontSize: 13,
-    color: '#8b2d2d',
-  },
-  modalActions: {
-    marginTop: 20,
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    gap: 10,
-  },
-  modalSecondaryButton: {
-    minHeight: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: '#c8bda8',
-    borderRadius: 9,
-    paddingHorizontal: 18,
-  },
-  modalSecondaryText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#302b25',
-  },
-  modalPrimaryButton: {
-    minWidth: 90,
-    minHeight: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 9,
-    backgroundColor: '#211e1a',
-    paddingHorizontal: 18,
-  },
-  modalPrimaryText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#ffffff',
   },
 });
