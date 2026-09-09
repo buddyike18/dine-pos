@@ -1,6 +1,6 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { onAuthStateChanged } from "firebase/auth";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { Alert, Pressable, ScrollView, View } from "react-native";
 
 
@@ -603,6 +603,12 @@ export default function TableDetailScreen() {
       setTimelineLoading(false);
     }
   }
+
+  useFocusEffect(
+    useCallback(() => {
+      void retryLoadTimeline();
+    }, [normalizedSafeTableId])
+  );
 
   const pendingOrderActionsRef = useRef<PendingOrderActionMap>({});
   const actionRefreshInFlightRef = useRef(false);

@@ -82,27 +82,52 @@ export default function RootScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: background.app }}>
-      <Pressable
-        onPress={() => router.push('/settings')}
+      <View
         style={{
           position: 'absolute',
           top: 50,
           right: 20,
           zIndex: 1000,
-          paddingVertical: 8,
-          paddingHorizontal: 12,
-          backgroundColor: '#111',
-          borderRadius: 6,
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 8,
         }}
       >
-        <Text style={{ color: '#fff', fontWeight: '600' }}>Settings</Text>
-      </Pressable>
+        <Pressable
+          onPress={() => router.push('/quick-order')}
+          style={{
+            paddingVertical: 8,
+            paddingHorizontal: 12,
+            backgroundColor: '#111',
+            borderRadius: 6,
+          }}
+        >
+          <Text style={{ color: '#fff', fontWeight: '600' }}>
+            Quick Order
+          </Text>
+        </Pressable>
+
+        <Pressable
+          onPress={() => router.push('/settings')}
+          style={{
+            paddingVertical: 8,
+            paddingHorizontal: 12,
+            backgroundColor: '#111',
+            borderRadius: 6,
+          }}
+        >
+          <Text style={{ color: '#fff', fontWeight: '600' }}>Settings</Text>
+        </Pressable>
+      </View>
 
       <FloorBoard
         assignments={assignments}
         visibleTableIds={visibleTableIds}
         onOpenTable={(tableId) => {
           router.push(`/table/${tableId}`);
+        }}
+        onOpenBar={() => {
+          router.push('/bar');
         }}
       />
     </View>

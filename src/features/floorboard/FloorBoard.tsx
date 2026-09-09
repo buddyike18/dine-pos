@@ -1,7 +1,7 @@
 // src/features/floorboard/FloorBoard.tsx
 
 import React, { useEffect, useMemo, useState } from "react";
-import { ScrollView, Text, View, ViewStyle } from "react-native";
+import { Pressable, ScrollView, Text, TextStyle, View, ViewStyle } from "react-native";
 
 import {
   MAX_CONTENT_WIDTH,
@@ -23,6 +23,7 @@ interface FloorBoardProps {
   assignments?: TableAssignment[];
   visibleTableIds?: string[];
   onOpenTable: (tableId: string) => void;
+  onOpenBar?: () => void;
   style?: ViewStyle;
 }
 
@@ -46,6 +47,7 @@ export const FloorBoard: React.FC<FloorBoardProps> = ({
   assignments = [],
   visibleTableIds,
   onOpenTable,
+  onOpenBar,
   style,
 }) => {
   const [storeSnapshot, setStoreSnapshot] = useState<FloorTablesSnapshot>(
@@ -195,7 +197,7 @@ export const FloorBoard: React.FC<FloorBoardProps> = ({
   const renderFixture = (
     label: string,
     fixtureStyle: ViewStyle,
-    textStyle?: ViewStyle
+    textStyle?: TextStyle
   ) => {
     return (
       <View
@@ -446,11 +448,43 @@ export const FloorBoard: React.FC<FloorBoardProps> = ({
                 tileStyle: { flex: 1 },
               })}
 
-              {renderFixture("Bar", {
-                minHeight: 100,
-                borderRadius: 12,
-                backgroundColor: "#efe7d8",
-              })}
+              {onOpenBar ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Open Bar seating"
+                  onPress={onOpenBar}
+                  style={({ pressed }) => ({
+                    minHeight: 112,
+                    borderRadius: 12,
+                    borderWidth: 1,
+                    borderColor: "#c8bda8",
+                    backgroundColor: "#fffaf2",
+                    opacity: pressed ? 0.85 : 1,
+                  })}
+                >
+                  {renderFixture(
+                    "Bar",
+                    {
+                      minHeight: 110,
+                      borderRadius: 11,
+                      backgroundColor: "#fffaf2",
+                    },
+                    {
+                      color: "#111111",
+                      fontSize: 28,
+                      fontWeight: "700",
+                      letterSpacing: 0,
+                      textTransform: "none",
+                    }
+                  )}
+                </Pressable>
+              ) : (
+                renderFixture("Bar", {
+                  minHeight: 100,
+                  borderRadius: 12,
+                  backgroundColor: "#efe7d8",
+                })
+              )}
 
               {renderRow(FLOOR_LAYOUT.rows.lowerLeftTop, {
                 justifyContent: "space-between",
