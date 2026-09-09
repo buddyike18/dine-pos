@@ -70,16 +70,55 @@ async function pollOrders() {
     for (const order of orders) {
       const orderId = String(order.id ?? "").trim();
       const tableId = normalizeTableId(order.table_id);
+      const checkId =
+        order.check_id === undefined || order.check_id === null
+          ? null
+          : String(order.check_id).trim().length > 0
+            ? String(order.check_id).trim()
+            : null;
       const status = normalizeStatus(order.status);
+      const orderType =
+        typeof order.type === "string"
+          ? order.type.trim().toUpperCase()
+          : "DINE_IN";
 
-      if (!orderId || !tableId || (status !== "OPEN" && status !== "SENT" && status !== "READY")) {
+      const hasActiveStatus =
+        status === "OPEN" || status === "SENT" || status === "READY";
+      const hasTableContext = Boolean(tableId);
+      const hasCheckContext = Boolean(checkId);
+
+      const hasValidServiceContext =
+        orderType === "QUICK"
+          ? !hasTableContext && !hasCheckContext
+          : hasTableContext !== hasCheckContext;
+
+      if (!orderId || !hasActiveStatus || !hasValidServiceContext) {
         hasMalformedActiveOrders = true;
         console.warn("[orderSync] malformed active order skipped", {
           rawOrder: order,
           normalizedOrderId: orderId,
           normalizedTableId: tableId,
+          normalizedCheckId: checkId,
           normalizedStatus: status,
+          normalizedType: orderType,
         });
+        continue;
+      }
+
+      activeOrderIds.add(orderId);
+
+      if (orderType === "QUICK") {
+        seenOrders.set(orderId, { status });
+        continue;
+      }
+
+      if (checkId && !tableId) {
+        seenOrders.set(orderId, { status });
+        continue;
+      }
+
+      if (!tableId) {
+        hasMalformedActiveOrders = true;
         continue;
       }
 
@@ -93,8 +132,6 @@ async function pollOrders() {
         });
         continue;
       }
-
-      activeOrderIds.add(orderId);
 
       const statesForTable = nextTableStates.get(tableId) ?? [];
       statesForTable.push(status === "READY" ? "ready" : "active");

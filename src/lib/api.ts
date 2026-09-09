@@ -101,6 +101,7 @@ export type BackendOrderItem = {
 export type BackendOrder = {
   id: string;
   status: BackendOrderStatus;
+  type?: 'DINE_IN' | 'TAKEOUT' | 'QUICK';
   table_id?: string | null;
   check_id?: string | null;
   opened_at?: string;
