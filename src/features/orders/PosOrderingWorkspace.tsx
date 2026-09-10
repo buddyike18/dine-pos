@@ -105,10 +105,12 @@ export type PosOrderContext =
 
 type PosOrderingWorkspaceProps = {
   context: PosOrderContext;
+  onOrderCreated?: (orderId: string) => Promise<void> | void;
 };
 
 export default function PosOrderingWorkspace({
   context,
+  onOrderCreated,
 }: PosOrderingWorkspaceProps) {
   const router = useRouter();
 
@@ -611,7 +613,7 @@ export default function PosOrderingWorkspace({
         setSubmissionIdempotencyKey(idempotencyKey);
       }
 
-      await createOrder({
+      const createdOrder = await createOrder({
         token,
         body: {
           restaurant_id: config.restaurantId,
@@ -627,7 +629,19 @@ export default function PosOrderingWorkspace({
 
       setSubmissionIdempotencyKey(null);
       setCartItems([]);
-      router.back();
+
+      if (onOrderCreated) {
+        try {
+          await onOrderCreated(createdOrder.orderId);
+        } catch (error) {
+          console.warn(
+            "POS order created, but post-create handling failed",
+            error,
+          );
+        }
+      } else {
+        router.back();
+      }
     } catch (error) {
       console.warn("Failed to submit POS order", error);
 

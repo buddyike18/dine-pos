@@ -110,6 +110,7 @@ export type BackendOrder = {
   total_cents?: number;
   total_price?: number;
   paid_cents?: number;
+  comped_cents?: number;
   balance_cents?: number;
   payment_status?: string;
   is_paid?: boolean;
