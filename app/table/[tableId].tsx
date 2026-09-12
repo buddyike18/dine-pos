@@ -1750,7 +1750,7 @@ export default function TableDetailScreen() {
             <Stack gap={2}>
               <ButtonPrimitive
                 hierarchy="primary"
-                label={hasUnsafeConnectionState ? "Ordering Locked" : "Ordering Mode"}
+                label={hasUnsafeConnectionState ? "Ordering Locked" : "Quick Order"}
                 disabled={hasUnsafeConnectionState}
                 onPress={() => router.push(`/table/${safeTableId}/order`)}
               />
