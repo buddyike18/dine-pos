@@ -106,13 +106,40 @@ export type PosOrderContext =
 type PosOrderingWorkspaceProps = {
   context: PosOrderContext;
   onOrderCreated?: (orderId: string) => Promise<void> | void;
+  onSendOrderCreated?: (orderId: string) => Promise<void> | void;
+  onPayOrderCreated?: (orderId: string) => Promise<void> | void;
+  actionRunning?: boolean;
+  onBarSendOrderCreated?: (orderId: string) => Promise<void> | void;
+  onBarPayOrderCreated?: (orderId: string) => Promise<void> | void;
+  barActionRunning?: boolean;
 };
 
 export default function PosOrderingWorkspace({
   context,
   onOrderCreated,
+  onSendOrderCreated,
+  onPayOrderCreated,
+  actionRunning = false,
+  onBarSendOrderCreated,
+  onBarPayOrderCreated,
+  barActionRunning = false,
 }: PosOrderingWorkspaceProps) {
   const router = useRouter();
+
+  const sendOrderCreated =
+    context.kind === "BAR_CHECK"
+      ? onBarSendOrderCreated
+      : onSendOrderCreated;
+
+  const payOrderCreated =
+    context.kind === "BAR_CHECK"
+      ? onBarPayOrderCreated
+      : onPayOrderCreated;
+
+  const orderActionRunning =
+    context.kind === "BAR_CHECK"
+      ? barActionRunning
+      : actionRunning;
 
   const [menuCategories, setMenuCategories] = useState<MenuCategory[]>([]);
   const [menuItems, setMenuItems] = useState<PosMenuItem[]>([]);
@@ -578,8 +605,16 @@ export default function PosOrderingWorkspace({
     );
   }
 
-  async function submitOrder() {
-    if (cartItems.length === 0 || isSubmittingOrder || context.unavailable) {
+  async function submitOrder(
+    postCreateOverride?: (orderId: string) => Promise<void> | void,
+  ) {
+    if (
+      cartItems.length === 0 ||
+      isSubmittingOrder ||
+      barActionRunning ||
+      actionRunning ||
+      context.unavailable
+    ) {
       if (context.unavailable) {
         setSubmitError(context.unavailableMessage);
       }
@@ -630,9 +665,12 @@ export default function PosOrderingWorkspace({
       setSubmissionIdempotencyKey(null);
       setCartItems([]);
 
-      if (onOrderCreated) {
+      const postCreateHandler =
+        postCreateOverride ?? onOrderCreated;
+
+      if (postCreateHandler) {
         try {
-          await onOrderCreated(createdOrder.orderId);
+          await postCreateHandler(createdOrder.orderId);
         } catch (error) {
           console.warn(
             "POS order created, but post-create handling failed",
@@ -1351,44 +1389,144 @@ export default function PosOrderingWorkspace({
                     </Text>
                   ) : null}
 
-                  <Pressable
-                    accessibilityRole="button"
-                    onPress={submitOrder}
-                    disabled={
-                      cartItems.length === 0 ||
-                      isSubmittingOrder ||
-                      context.unavailable
-                    }
-                    style={{
-                      borderWidth: 1,
-                      borderColor: "#4f463b",
-                      borderRadius: 10,
-                      backgroundColor:
+                  {(context.kind === "BAR_CHECK" || onSendOrderCreated || onPayOrderCreated) ? (
+                    <View
+                      style={{
+                        flexDirection: "row",
+                        gap: 10,
+                      }}
+                    >
+                      <Pressable
+                        accessibilityRole="button"
+                        onPress={() => {
+                          void submitOrder(sendOrderCreated);
+                        }}
+                        disabled={
+                          cartItems.length === 0 ||
+                          isSubmittingOrder ||
+                          orderActionRunning ||
+                          context.unavailable ||
+                          !sendOrderCreated
+                        }
+                        style={{
+                          flex: 1,
+                          borderWidth: 1,
+                          borderColor: "#4f463b",
+                          borderRadius: 10,
+                          backgroundColor:
+                            cartItems.length === 0 ||
+                            isSubmittingOrder ||
+                            orderActionRunning ||
+                            context.unavailable ||
+                            !sendOrderCreated
+                              ? "#efe7d8"
+                              : "#fffaf2",
+                          paddingVertical: 14,
+                          paddingHorizontal: 18,
+                        }}
+                      >
+                        <Text
+                          style={{
+                            color: "#4f463b",
+                            fontSize: 19,
+                            fontWeight: "700",
+                            textAlign: "center",
+                          }}
+                        >
+                          {isSubmittingOrder ? "Sending..." : "Send"}
+                        </Text>
+                      </Pressable>
+
+                      <Pressable
+                        accessibilityRole="button"
+                        onPress={() => {
+                          void submitOrder(payOrderCreated);
+                        }}
+                        disabled={
+                          cartItems.length === 0 ||
+                          isSubmittingOrder ||
+                          orderActionRunning ||
+                          context.unavailable ||
+                          !payOrderCreated
+                        }
+                        style={{
+                          flex: 1,
+                          borderWidth: 1,
+                          borderColor: "#4f463b",
+                          borderRadius: 10,
+                          backgroundColor:
+                            cartItems.length === 0 ||
+                            isSubmittingOrder ||
+                            orderActionRunning ||
+                            context.unavailable ||
+                            !payOrderCreated
+                              ? "#efe7d8"
+                              : "#4f463b",
+                          paddingVertical: 14,
+                          paddingHorizontal: 18,
+                        }}
+                      >
+                        <Text
+                          style={{
+                            color:
+                              cartItems.length === 0 ||
+                              isSubmittingOrder ||
+                              orderActionRunning ||
+                              context.unavailable ||
+                              !payOrderCreated
+                                ? "#6f6252"
+                                : "#fffaf2",
+                            fontSize: 19,
+                            fontWeight: "700",
+                            textAlign: "center",
+                          }}
+                        >
+                          {orderActionRunning ? "Processing..." : "Pay"}
+                        </Text>
+                      </Pressable>
+                    </View>
+                  ) : (
+                    <Pressable
+                      accessibilityRole="button"
+                      onPress={() => {
+                        void submitOrder();
+                      }}
+                      disabled={
                         cartItems.length === 0 ||
                         isSubmittingOrder ||
                         context.unavailable
-                          ? "#efe7d8"
-                          : "#4f463b",
-                      paddingVertical: 14,
-                      paddingHorizontal: 18,
-                    }}
-                  >
-                    <Text
+                      }
                       style={{
-                        color:
+                        borderWidth: 1,
+                        borderColor: "#4f463b",
+                        borderRadius: 10,
+                        backgroundColor:
                           cartItems.length === 0 ||
                           isSubmittingOrder ||
                           context.unavailable
-                            ? "#6f6252"
-                            : "#fffaf2",
-                        fontSize: 19,
-                        fontWeight: "700",
-                        textAlign: "center",
+                            ? "#efe7d8"
+                            : "#4f463b",
+                        paddingVertical: 14,
+                        paddingHorizontal: 18,
                       }}
                     >
-                      {isSubmittingOrder ? "Submitting..." : "Submit Order"}
-                    </Text>
-                  </Pressable>
+                      <Text
+                        style={{
+                          color:
+                            cartItems.length === 0 ||
+                            isSubmittingOrder ||
+                            context.unavailable
+                              ? "#6f6252"
+                              : "#fffaf2",
+                          fontSize: 19,
+                          fontWeight: "700",
+                          textAlign: "center",
+                        }}
+                      >
+                        {isSubmittingOrder ? "Submitting..." : "Submit Order"}
+                      </Text>
+                    </Pressable>
+                  )}
                 </View>
               </View>
             </View>

@@ -21,6 +21,7 @@ import {
   createBarCheckPaymentIntent,
   getBarCheck,
   isUuid,
+  updateOrderStatus,
 } from '../../../../src/lib/api';
 import { getIdToken } from '../../../../src/lib/firebase';
 
@@ -281,6 +282,26 @@ export default function BarCheckOrderingRoute() {
     }
   };
 
+  const sendCreatedBarOrder = async (orderId: string) => {
+    const token = await getIdToken(true);
+
+    if (!token) {
+      throw new Error('Staff authentication is required.');
+    }
+
+    await updateOrderStatus({
+      token,
+      orderId,
+      status: 'SENT',
+    });
+
+    await refreshAuthoritativeCheck(token);
+  };
+
+  const payCreatedBarOrder = async (_orderId: string) => {
+    await payTab();
+  };
+
   const context: PosOrderContext = {
     kind: 'BAR_CHECK',
     id: checkId,
@@ -304,5 +325,12 @@ export default function BarCheckOrderingRoute() {
       || 'Bar check unavailable. Return to the bar floorchart and try again.',
   };
 
-  return <PosOrderingWorkspace context={context} />;
+  return (
+    <PosOrderingWorkspace
+      context={context}
+      onBarSendOrderCreated={sendCreatedBarOrder}
+      onBarPayOrderCreated={payCreatedBarOrder}
+      barActionRunning={paymentRunning}
+    />
+  );
 }

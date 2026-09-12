@@ -244,6 +244,17 @@ export default function BarScreen() {
 
         <View style={styles.headerActions}>
           <Pressable
+            onPress={() => router.push("/quick-order")}
+            style={({ pressed }) => [
+              styles.openTabsButton,
+              pressed && styles.backButtonPressed,
+            ]}
+          >
+            <Text style={styles.openTabsButtonText}>
+              Quick Order
+            </Text>
+          </Pressable>
+<Pressable
             onPress={() => router.push('/bar/tabs')}
             style={({ pressed }) => [
               styles.openTabsButton,

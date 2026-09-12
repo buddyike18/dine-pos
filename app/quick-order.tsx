@@ -5,7 +5,11 @@ import * as Linking from "expo-linking";
 import { useStripe } from "@stripe/stripe-react-native";
 
 import PosOrderingWorkspace from "../src/features/orders/PosOrderingWorkspace";
-import { createPaymentIntent, getOrderById } from "../src/lib/api";
+import {
+  createPaymentIntent,
+  getOrderById,
+  updateOrderStatus,
+} from "../src/lib/api";
 import { getIdToken } from "../src/lib/firebase";
 
 const SETTLEMENT_POLL_ATTEMPTS = 12;
@@ -211,6 +215,25 @@ export default function QuickOrderScreen() {
     router,
   ]);
 
+  const sendCreatedOrder = useCallback(
+    async (orderId: string) => {
+      const token = await getIdToken(true);
+
+      if (!token) {
+        throw new Error("Staff authentication is required.");
+      }
+
+      await updateOrderStatus({
+        token,
+        orderId,
+        status: "SENT",
+      });
+
+      router.back();
+    },
+    [router],
+  );
+
   const handleOrderCreated = useCallback(
     async (orderId: string) => {
       // Persist the authoritative created order before starting Stripe.
@@ -300,7 +323,8 @@ export default function QuickOrderScreen() {
         unavailable: false,
         unavailableMessage: "Quick Order unavailable.",
       }}
-      onOrderCreated={handleOrderCreated}
+      onSendOrderCreated={sendCreatedOrder}
+      onPayOrderCreated={handleOrderCreated}
     />
   );
 }
