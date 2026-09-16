@@ -118,10 +118,6 @@ export const FloorBoard: React.FC<FloorBoardProps> = ({
     tileStyle?: ViewStyle,
     isAngled: boolean = false
   ) => {
-    if (visibleTableIdSet && !visibleTableIdSet.has(tableId)) {
-      return null;
-    }
-
     const table = tableMap.get(tableId);
     if (!table) {
       if (__DEV__) {
@@ -129,6 +125,9 @@ export const FloorBoard: React.FC<FloorBoardProps> = ({
       }
       return null;
     }
+
+    const isContextOnly =
+      Boolean(visibleTableIdSet) && !visibleTableIdSet!.has(tableId);
 
     return (
       <View
@@ -148,15 +147,30 @@ export const FloorBoard: React.FC<FloorBoardProps> = ({
             : null,
         ]}
       >
-        <View style={{ minHeight: 84 }}>
-          <TableTile
-            tableLabel={table.label}
-            state={table.state}
-            assignedStaffName={assignmentMap.get(table.id)}
-            unseenCount={table.unseenCount}
-            onPress={() => onOpenTable(table.id)}
-          />
-        </View>
+        {isContextOnly ? (
+          <View style={{ minHeight: 84, opacity: 0.38 }}>
+            {renderFixture(
+              table.label,
+              {
+                width: "100%",
+                minHeight: 84,
+              },
+              {
+                opacity: 0.72,
+              }
+            )}
+          </View>
+        ) : (
+          <View style={{ minHeight: 84 }}>
+            <TableTile
+              tableLabel={table.label}
+              state={table.state}
+              assignedStaffName={assignmentMap.get(table.id)}
+              unseenCount={table.unseenCount}
+              onPress={() => onOpenTable(table.id)}
+            />
+          </View>
+        )}
       </View>
     );
   };
@@ -254,137 +268,6 @@ export const FloorBoard: React.FC<FloorBoardProps> = ({
     alignSelf: "center",
     gap: 8,
   };
-
-  if (assignedVisibleTables) {
-    return (
-      <View
-        style={[
-          {
-            flex: 1,
-            backgroundColor: background.app,
-          },
-          style,
-        ]}
-      >
-        <ScrollView
-          contentContainerStyle={{
-            paddingHorizontal: SURFACE_PADDING,
-            paddingTop: SURFACE_PADDING * 0.75,
-            paddingBottom: SURFACE_PADDING * 1.5,
-          }}
-        >
-          <View style={boardStyle}>
-            {awarenessStatus === "degraded" ? (
-              <View
-                style={{
-                  borderWidth: 1,
-                  borderColor: "#d6a099",
-                  backgroundColor: "#f7e8e5",
-                  borderRadius: 10,
-                  paddingHorizontal: 12,
-                  paddingVertical: 10,
-                  gap: 4,
-                }}
-              >
-                <Text
-                  style={{
-                    color: "#8a2f22",
-                    fontSize: 12,
-                    fontWeight: "900",
-                    letterSpacing: 0.3,
-                    textTransform: "uppercase",
-                  }}
-                >
-                  Live floor awareness degraded
-                </Text>
-                <Text
-                  style={{
-                    color: "#8a2f22",
-                    fontSize: 12,
-                    fontWeight: "700",
-                  }}
-                >
-                  Order updates may be delayed. Reconnecting automatically.
-                </Text>
-              </View>
-            ) : null}
-
-            {renderSectionTitle("My Tables")}
-
-            {onOpenBar ? (
-              <View
-                style={{
-                  flexDirection: "row",
-                  flexWrap: "wrap",
-                  gap: 12,
-                  marginBottom: 12,
-                }}
-              >
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="Open assigned Bar seating"
-                  onPress={onOpenBar}
-                >
-                  {renderFixture("Bar", {
-                    width: 220,
-                    minHeight: 104,
-                  })}
-                </Pressable>
-              </View>
-            ) : null}
-
-            {assignedVisibleTables.length > 0 ? (
-              <View
-                style={{
-                  flexDirection: "row",
-                  flexWrap: "wrap",
-                  gap: 12,
-                }}
-              >
-                {assignedVisibleTables.map((table) => (
-                  <View
-                    key={table.id}
-                    style={{
-                      width: 220,
-                      minHeight: 104,
-                    }}
-                  >
-                    <TableTile
-                      tableLabel={table.label}
-                      state={table.state}
-                      assignedStaffName={assignmentMap.get(table.id)}
-                      unseenCount={table.unseenCount}
-                      onPress={() => onOpenTable(table.id)}
-                    />
-                  </View>
-                ))}
-              </View>
-            ) : (
-              <View
-                style={{
-                  borderWidth: 1,
-                  borderColor: "#c8bda8",
-                  backgroundColor: "#fffaf2",
-                  borderRadius: 10,
-                  padding: 16,
-                }}
-              >
-                <Text
-                  style={{
-                    color: "#4f463b",
-                    fontSize: 14,
-                    fontWeight: "800",
-                  }}
-                >
-                  No assigned tables.
-                </Text>
-              </View>
-            )}
-          </View>
-        </ScrollView>
-      </View>
-    );
-  }
 
   return (
     <View
@@ -531,10 +414,6 @@ export const FloorBoard: React.FC<FloorBoardProps> = ({
             >
               <View style={{ gap: 8 }}>
                 {FLOOR_LAYOUT.rightColumn.floorStack.map((id) => {
-                  if (visibleTableIdSet && !visibleTableIdSet.has(id)) {
-                    return null;
-                  }
-
                   const table = tableMap.get(id);
                   if (!table) {
                     if (__DEV__) {
@@ -542,6 +421,9 @@ export const FloorBoard: React.FC<FloorBoardProps> = ({
                     }
                     return null;
                   }
+
+                  const isContextOnly =
+                    Boolean(visibleTableIdSet) && !visibleTableIdSet!.has(id);
 
                   return (
                     <View
@@ -553,13 +435,29 @@ export const FloorBoard: React.FC<FloorBoardProps> = ({
                         overflow: "hidden",
                       }}
                     >
-                      <TableTile
-                        tableLabel={table.label}
-                        state={table.state}
-                        assignedStaffName={assignmentMap.get(table.id)}
-                        unseenCount={table.unseenCount}
-                        onPress={() => onOpenTable(table.id)}
-                      />
+                      {isContextOnly ? (
+                        <View style={{ flex: 1, opacity: 0.38 }}>
+                          {renderFixture(
+                            table.label,
+                            {
+                              width: "100%",
+                              height: "100%",
+                              borderRadius: 12,
+                            },
+                            {
+                              opacity: 0.72,
+                            }
+                          )}
+                        </View>
+                      ) : (
+                        <TableTile
+                          tableLabel={table.label}
+                          state={table.state}
+                          assignedStaffName={assignmentMap.get(table.id)}
+                          unseenCount={table.unseenCount}
+                          onPress={() => onOpenTable(table.id)}
+                        />
+                      )}
                     </View>
                   );
                 })}
