@@ -1,9 +1,22 @@
 import { useEffect, useState } from 'react';
-import { View, Text, ScrollView, ActivityIndicator, StyleSheet } from 'react-native';
-import { useLocalSearchParams } from 'expo-router';
+import { View, Text, ScrollView, ActivityIndicator, StyleSheet, Pressable } from 'react-native';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 
 import { getOrderById, getOrderEvents } from '../../../src/lib/api';
 import { getIdToken } from '../../../src/lib/firebase';
+
+type OrderItemModifier = {
+  id?: string;
+  group_id?: string | null;
+  option_id?: string | null;
+  group_name?: string;
+  option_name?: string;
+  price_delta_cents?: number;
+  quantity?: number;
+  group_name_snapshot?: string;
+  option_name_snapshot?: string;
+  price_delta_cents_snapshot?: number;
+};
 
 type OrderItem = {
   id?: string;
@@ -13,6 +26,7 @@ type OrderItem = {
   quantity?: number;
   price_cents?: number;
   unit_price_cents?: number;
+  modifiers?: OrderItemModifier[];
 };
 
 type Order = {
@@ -74,6 +88,7 @@ function formatDateTime(value?: string | null) {
 }
 
 export default function OrderDetailsScreen() {
+  const router = useRouter();
   const params = useLocalSearchParams<{ orderId?: string | string[] }>();
   const orderId = Array.isArray(params.orderId) ? params.orderId[0] : params.orderId;
   const normalizedOrderId = typeof orderId === 'string' ? orderId.trim() : '';
@@ -180,6 +195,14 @@ export default function OrderDetailsScreen() {
     <ScrollView contentContainerStyle={styles.container}>
       {/* Header */}
       <View style={styles.card}>
+        <Pressable
+          onPress={() => router.back()}
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
+          style={styles.backButton}
+        >
+          <Text style={styles.backButtonText}>‹ Back</Text>
+        </Pressable>
         <Text style={styles.orderId}>Order #{order.id.replace(/-/g, '').slice(-6).toUpperCase()}</Text>
         <Text style={styles.status}>{titleCase(order.status)}</Text>
       </View>
@@ -192,11 +215,43 @@ export default function OrderDetailsScreen() {
           const name = item.name || item.menu_item_name || 'Item';
           const key = item.id ? `item:${item.id}` : `idx:${idx}`;
 
+          const modifiers = Array.isArray(item.modifiers) ? item.modifiers : [];
+
           return (
-            <View key={key} style={styles.row}>
-              <Text style={styles.itemName}>
-                {qty}× {name}
-              </Text>
+            <View key={key} style={styles.itemBlock}>
+              <View style={styles.row}>
+                <Text style={styles.itemName}>
+                  {qty}× {name}
+                </Text>
+              </View>
+
+              {modifiers.map((modifier, modifierIdx) => {
+                const modifierQty = modifier.quantity ?? 1;
+                const groupName = modifier.group_name || modifier.group_name_snapshot;
+                const optionName = modifier.option_name || modifier.option_name_snapshot || 'Modifier';
+                const priceDelta =
+                  modifier.price_delta_cents ?? modifier.price_delta_cents_snapshot ?? 0;
+                const modifierKey =
+                  modifier.id ||
+                  modifier.option_id ||
+                  `${key}:modifier:${modifierIdx}`;
+
+                return (
+                  <View key={modifierKey} style={styles.modifierRow}>
+                    <Text style={styles.modifierText}>
+                      {modifierQty > 1 ? `${modifierQty}× ` : ''}
+                      {groupName ? `${groupName}: ` : ''}
+                      {optionName}
+                    </Text>
+                    {priceDelta !== 0 ? (
+                      <Text style={styles.modifierPrice}>
+                        {priceDelta > 0 ? '+' : '-'}
+                        {formatMoney(Math.abs(priceDelta))}
+                      </Text>
+                    ) : null}
+                  </View>
+                );
+              })}
             </View>
           );
         })}
@@ -308,6 +363,35 @@ const styles = StyleSheet.create({
   itemName: {
     flex: 1,
     marginRight: 8,
+  },
+  itemBlock: {
+    marginBottom: 6,
+  },
+  modifierRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingLeft: 16,
+    marginBottom: 4,
+  },
+  modifierText: {
+    flex: 1,
+    marginRight: 8,
+    color: '#666',
+    fontSize: 12,
+  },
+  modifierPrice: {
+    color: '#666',
+    fontSize: 12,
+  },
+  backButton: {
+    alignSelf: 'flex-start',
+    marginBottom: 8,
+    paddingVertical: 4,
+    paddingRight: 12,
+  },
+  backButtonText: {
+    fontSize: 15,
+    fontWeight: '700',
   },
   totalRow: {
     marginTop: 8,

@@ -108,7 +108,7 @@ export default function RootScreen() {
         </Pressable>
 
         <Pressable
-          onPress={() => router.push('/bar/tabs')}
+          onPress={() => router.push('/open-tabs')}
           style={{
             paddingVertical: 8,
             paddingHorizontal: 12,
