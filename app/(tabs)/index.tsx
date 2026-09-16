@@ -8,12 +8,18 @@ import {
   getCurrentActor,
   type StaffRole,
 } from '../../src/lib/firebase';
-import { listTableAssignments, type TableAssignment } from '../../src/lib/api';
+import {
+  listBarAssignments,
+  listTableAssignments,
+  type BarAssignment,
+  type TableAssignment,
+} from '../../src/lib/api';
 import { background } from '../../src/design-system/tokens/colors';
 
 export default function RootScreen() {
   const router = useRouter();
   const [assignments, setAssignments] = useState<TableAssignment[]>([]);
+  const [barAssignments, setBarAssignments] = useState<BarAssignment[]>([]);
   const [uiRole, setUiRole] = useState<StaffRole | 'unknown'>('unknown');
   const [currentStaffUserId, setCurrentStaffUserId] = useState<string | null>(null);
 
@@ -39,10 +45,14 @@ export default function RootScreen() {
           return;
         }
 
-        const nextAssignments = await listTableAssignments({ token });
+        const [nextAssignments, nextBarAssignments] = await Promise.all([
+          listTableAssignments({ token }),
+          listBarAssignments({ token }),
+        ]);
 
-        if (mounted) {
+if (mounted) {
           setAssignments(nextAssignments);
+          setBarAssignments(nextBarAssignments);
         }
       } catch (error) {
         console.warn('[floorboard] failed to load table assignments', error);
@@ -80,7 +90,23 @@ export default function RootScreen() {
       .filter(Boolean);
   }, [assignments, currentStaffUserId, uiRole]);
 
-  return (
+  const canOpenBar = useMemo(() => {
+    if (uiRole === 'Manager') {
+      return true;
+    }
+
+    if (uiRole !== 'Employee' || !currentStaffUserId) {
+      return false;
+    }
+
+    return barAssignments.some(
+      (assignment) =>
+        assignment.active !== false &&
+        String(assignment.staff_user_id ?? '').trim() === currentStaffUserId
+    );
+  }, [barAssignments, currentStaffUserId, uiRole]);
+
+return (
     <View style={{ flex: 1, backgroundColor: background.app }}>
       <View
         style={{
@@ -140,9 +166,13 @@ export default function RootScreen() {
         onOpenTable={(tableId) => {
           router.push(`/table/${tableId}`);
         }}
-        onOpenBar={() => {
-          router.push('/bar');
-        }}
+        onOpenBar={
+          canOpenBar
+            ? () => {
+                router.push('/bar');
+              }
+            : undefined
+        }
       />
     </View>
   );

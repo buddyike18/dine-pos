@@ -311,6 +311,28 @@ export const FloorBoard: React.FC<FloorBoardProps> = ({
 
             {renderSectionTitle("My Tables")}
 
+            {onOpenBar ? (
+              <View
+                style={{
+                  flexDirection: "row",
+                  flexWrap: "wrap",
+                  gap: 12,
+                  marginBottom: 12,
+                }}
+              >
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Open assigned Bar seating"
+                  onPress={onOpenBar}
+                >
+                  {renderFixture("Bar", {
+                    width: 220,
+                    minHeight: 104,
+                  })}
+                </Pressable>
+              </View>
+            ) : null}
+
             {assignedVisibleTables.length > 0 ? (
               <View
                 style={{

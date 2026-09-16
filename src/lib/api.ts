@@ -122,6 +122,7 @@ export type BarChair = {
   chair_number: number;
   display_name: string | null;
   active: boolean;
+  occupied: boolean;
   created_at: string;
   updated_at: string;
 };
@@ -154,6 +155,16 @@ export type TableAssignment = {
   id?: string;
   restaurant_id?: string;
   table_id: string;
+  staff_user_id?: string;
+  active?: boolean;
+  staff_name?: string;
+  staff_role?: string;
+  staff_active?: boolean;
+};
+
+export type BarAssignment = {
+  id?: string;
+  restaurant_id?: string;
   staff_user_id?: string;
   active?: boolean;
   staff_name?: string;
@@ -794,6 +805,36 @@ export async function listTableAssignments(args: {
     ['data'],
     [],
   ]) as TableAssignment[];
+}
+
+export async function listBarAssignments(args: {
+  token: string;
+  restaurantId?: string;
+}): Promise<BarAssignment[]> {
+  const { token, restaurantId } = args;
+
+  const url = restaurantId
+    ? buildUrl(`/api/bar-assignments?restaurant_id=${encodeURIComponent(restaurantId)}`)
+    : buildUrl('/api/bar-assignments');
+
+  const res = await fetchWithTimeout(url, {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/json',
+      'X-Client': 'dine-pos',
+      'X-Platform': Platform.OS,
+    },
+  });
+
+  const data = await getJsonOrThrow(res, 'listBarAssignments');
+
+  return extractArrayOrThrow(data, 'listBarAssignments', [
+    ['assignments'],
+    ['data', 'assignments'],
+    ['data'],
+    [],
+  ]) as BarAssignment[];
 }
 
 function normalizeOrderTableKey(value: unknown) {

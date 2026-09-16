@@ -107,7 +107,7 @@ export default function BarScreen() {
     }
 
     const openCheck = checksByChairId.get(chair.id);
-    const isOccupied = Boolean(openCheck);
+    const isOccupied = chair.occupied || Boolean(openCheck);
     const isCreating = creatingChairId === chair.id;
 
     return (
@@ -129,6 +129,10 @@ export default function BarScreen() {
                 chairNumber: String(chair.chair_number),
               },
             });
+            return;
+          }
+
+          if (isOccupied) {
             return;
           }
 
