@@ -1,7 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import * as Linking from "expo-linking";
+import { useStripe } from "@stripe/stripe-react-native";
 import { onAuthStateChanged } from "firebase/auth";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
-import { Alert, Pressable, ScrollView, View } from "react-native";
+import { Alert, Pressable, ScrollView, View, Text } from "react-native";
 
 
 import {
@@ -16,6 +18,8 @@ import {
 
 import { resolveHighestPriorityState } from "../../src/design-system/foundations/statePriority";
 import {
+  createPaymentIntent,
+  getOrderById,
   getOrderEvents,
   getOrderPaidCents,
   getOrderPaymentState,
@@ -467,7 +471,10 @@ async function loadTableOrdersFromBackend(args: {
 }
 
 export default function TableDetailScreen() {
-  const { tableId } = useLocalSearchParams<{ tableId: string }>();
+  const { tableId, mode } =
+    useLocalSearchParams<{ tableId: string; mode?: string }>();
+
+  const isSettlementMode = mode === "settlement";
   const router = useRouter();
 
   const safeTableId = String(tableId ?? "");
@@ -478,6 +485,10 @@ export default function TableDetailScreen() {
   const [resetPending, setResetPending] = useState(false);
   const [resetError, setResetError] = useState<string | null>(null);
   const [tableOrders, setTableOrders] = useState<TableOrder[]>([]);
+  const [settlementOrderId, setSettlementOrderId] = useState<string | null>(null);
+  const [settlementSubmittedOrderId, setSettlementSubmittedOrderId] =
+    useState<string | null>(null);
+  const { initPaymentSheet, presentPaymentSheet } = useStripe();
   const [assignedStaffName, setAssignedStaffName] = useState<string | null>(null);
   const [pendingOrderActions, setPendingOrderActions] = useState<PendingOrderActionMap>({});
   useEffect(() => {
@@ -662,8 +673,16 @@ export default function TableDetailScreen() {
   const readyOrders = completedOrders;
   const closedOrders = terminalOrders;
 
-  const filteredActiveOrders =
-    selectedOrderFilter === "OPEN"
+  const unresolvedTableOrders = activeOrders.filter(
+    (order) =>
+      order.totalCents > 0 &&
+      order.paidCents < order.totalCents &&
+      (order.status === "OPEN" || order.status === "SENT")
+  );
+
+  const filteredActiveOrders = isSettlementMode
+    ? unresolvedTableOrders
+    : selectedOrderFilter === "OPEN"
       ? openOrders
       : selectedOrderFilter === "SENT"
         ? sentOrders
@@ -830,6 +849,213 @@ export default function TableDetailScreen() {
       setResetError(getResetErrorMessage(error));
     } finally {
       setResetPending(false);
+    }
+  }
+
+  function isSettledTableOrder(
+    order: Awaited<ReturnType<typeof getOrderById>>,
+  ) {
+    const totalCents = Number(order.total_cents ?? 0);
+    const paidCents = Number(order.paid_cents ?? 0);
+    const compedCents = Number(order.comped_cents ?? 0);
+
+    return (
+      order.status === "SENT" &&
+      paidCents + compedCents >= totalCents
+    );
+  }
+
+  async function confirmSettlementPayment(
+    orderId: string,
+    token: string,
+  ): Promise<boolean> {
+    const SETTLEMENT_POLL_ATTEMPTS = 12;
+    const SETTLEMENT_POLL_DELAY_MS = 500;
+
+    for (
+      let attempt = 0;
+      attempt < SETTLEMENT_POLL_ATTEMPTS;
+      attempt += 1
+    ) {
+      const order = await getOrderById(orderId, token);
+
+      if (isSettledTableOrder(order)) {
+        return true;
+      }
+
+      if (attempt < SETTLEMENT_POLL_ATTEMPTS - 1) {
+        await new Promise<void>((resolve) =>
+          setTimeout(resolve, SETTLEMENT_POLL_DELAY_MS),
+        );
+      }
+    }
+
+    return false;
+  }
+
+  async function refreshOrdersAfterSettlement(token: string) {
+    const nextOrders = await loadTableOrdersFromBackend({
+      token,
+      tableId: normalizedSafeTableId,
+      eventCache: orderEventCacheRef.current,
+    });
+
+    const resolvedNextOrders = Array.isArray(nextOrders)
+      ? nextOrders
+      : [];
+
+    setTableOrders((current) => {
+      if (resolvedNextOrders.length === 0 && current.length > 0) {
+        return current;
+      }
+
+      return resolvedNextOrders;
+    });
+  }
+
+  async function handleSettlementPay(orderId: string) {
+    if (!isSettlementMode || settlementOrderId !== null) {
+      return;
+    }
+
+    setSettlementOrderId(orderId);
+
+    try {
+      const token = await getIdToken(true);
+
+      if (!token) {
+        throw new Error(
+          "Authentication required to pay Table Order.",
+        );
+      }
+
+      // Proven TABLE invariant: authoritative precheck before
+      // creating/reusing a PaymentIntent.
+      const currentOrder = await getOrderById(orderId, token);
+
+      if (isSettledTableOrder(currentOrder)) {
+        setSettlementSubmittedOrderId(null);
+        await refreshOrdersAfterSettlement(token);
+        return;
+      }
+
+      const paymentIntent = await createPaymentIntent({
+        token,
+        orderId,
+        idempotencyKey: `pos-table-order-${orderId}`,
+      });
+
+      if (!paymentIntent.clientSecret) {
+        throw new Error(
+          "Table Order payment intent did not return a client secret.",
+        );
+      }
+
+      const { error: initError } = await initPaymentSheet({
+        merchantDisplayName: "Dine",
+        paymentIntentClientSecret: paymentIntent.clientSecret,
+        returnURL: Linking.createURL("stripe-return"),
+      });
+
+      if (initError) {
+        throw new Error(
+          initError.message ||
+            "Unable to initialize Table Order payment.",
+        );
+      }
+
+      const { error: paymentError } =
+        await presentPaymentSheet();
+
+      if (paymentError) {
+        if (
+          String(paymentError.code)
+            .toLowerCase()
+            .includes("cancel")
+        ) {
+          return;
+        }
+
+        throw new Error(
+          paymentError.message ||
+            "Unable to complete Table Order payment.",
+        );
+      }
+
+      setSettlementSubmittedOrderId(orderId);
+
+      const settled = await confirmSettlementPayment(
+        orderId,
+        token,
+      );
+
+      if (settled) {
+        setSettlementSubmittedOrderId(null);
+        await refreshOrdersAfterSettlement(token);
+        return;
+      }
+
+      Alert.alert(
+        "Payment submitted",
+        "Stripe accepted the payment, but Dine is still waiting for " +
+          "authoritative settlement. Do not submit another payment.",
+      );
+    } catch (error) {
+      Alert.alert(
+        "Unable to Pay Table Order",
+        error instanceof Error
+          ? error.message
+          : "Unable to complete Table Order payment.",
+      );
+    } finally {
+      setSettlementOrderId(null);
+    }
+  }
+
+  async function recoverSettlementPayment(orderId: string) {
+    if (
+      settlementSubmittedOrderId !== orderId ||
+      settlementOrderId !== null
+    ) {
+      return;
+    }
+
+    setSettlementOrderId(orderId);
+
+    try {
+      const token = await getIdToken(true);
+
+      if (!token) {
+        throw new Error(
+          "Authentication required to check Table Order payment.",
+        );
+      }
+
+      const settled = await confirmSettlementPayment(
+        orderId,
+        token,
+      );
+
+      if (settled) {
+        setSettlementSubmittedOrderId(null);
+        await refreshOrdersAfterSettlement(token);
+        return;
+      }
+
+      Alert.alert(
+        "Payment still settling",
+        "Dine has not confirmed authoritative settlement yet. " +
+          "Do not submit another payment.",
+      );
+    } catch (error) {
+      Alert.alert(
+        "Unable to Check Table Order Payment",
+        error instanceof Error
+          ? error.message
+          : "Unable to confirm Table Order payment.",
+      );
+    } finally {
+      setSettlementOrderId(null);
     }
   }
 
@@ -1160,56 +1386,87 @@ export default function TableDetailScreen() {
                 ) : null}
               </Stack>
 
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => router.back()}
-                style={{
-                  borderWidth: 1,
-                  borderColor: "#c8bda8",
-                  backgroundColor: "#fffaf2",
-                  borderRadius: 999,
-                  paddingVertical: 6,
-                  paddingHorizontal: 12,
-                }}
-              >
-                <TextPrimitive variant="bodySm" style={{ color: "#4f463b", fontWeight: "900" }}>
-                  Back
-                </TextPrimitive>
-              </Pressable>
-            </Row>
-
-            <Row style={{ flexWrap: "wrap", gap: 12, paddingTop: 2, paddingBottom: 8 }}>
-              {(["OPEN", "SENT", "READY", "CLOSED"] as const).map((filter) => {
-                const isSelected = selectedOrderFilter === filter;
-                return (
+              <Row align="center" style={{ gap: 8 }}>
+                {!isSettlementMode && unresolvedTableOrders.length > 0 ? (
                   <Pressable
-                    key={filter}
                     accessibilityRole="button"
-                    onPress={() => setSelectedOrderFilter(filter)}
+                    onPress={() =>
+                      router.push({
+                        pathname: "/table/[tableId]",
+                        params: {
+                          tableId,
+                          mode: "settlement",
+                        },
+                      })
+                    }
                     style={{
                       borderWidth: 1,
-                      borderColor: isSelected ? "#8f1f2f" : "#c8bda8",
-                      backgroundColor: isSelected ? "#8f1f2f" : "#fffaf2",
+                      borderColor: "#8f1f2f",
+                      backgroundColor: "#8f1f2f",
                       borderRadius: 999,
                       paddingVertical: 6,
-                      paddingHorizontal: 14,
-                      marginRight: 0,
+                      paddingHorizontal: 12,
                     }}
                   >
-                    <TextPrimitive
-                      variant="bodySm"
-                      style={{
-                        color: isSelected ? "#fffaf2" : "#4f463b",
-                        fontWeight: "800",
-                        letterSpacing: 0.5,
-                      }}
-                    >
-                      {filter}
+                    <TextPrimitive variant="bodySm" style={{ color: "#fffaf2", fontWeight: "900" }}>
+                      Settle Table
                     </TextPrimitive>
                   </Pressable>
-                );
-              })}
+                ) : null}
+
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => router.back()}
+                  style={{
+                    borderWidth: 1,
+                    borderColor: "#c8bda8",
+                    backgroundColor: "#fffaf2",
+                    borderRadius: 999,
+                    paddingVertical: 6,
+                    paddingHorizontal: 12,
+                  }}
+                >
+                  <TextPrimitive variant="bodySm" style={{ color: "#4f463b", fontWeight: "900" }}>
+                    Back
+                  </TextPrimitive>
+                </Pressable>
+              </Row>
             </Row>
+
+            {!isSettlementMode ? (
+              <Row style={{ flexWrap: "wrap", gap: 12, paddingTop: 2, paddingBottom: 8 }}>
+                {(["OPEN", "SENT", "READY", "CLOSED"] as const).map((filter) => {
+                  const isSelected = selectedOrderFilter === filter;
+                  return (
+                    <Pressable
+                      key={filter}
+                      accessibilityRole="button"
+                      onPress={() => setSelectedOrderFilter(filter)}
+                      style={{
+                        borderWidth: 1,
+                        borderColor: isSelected ? "#8f1f2f" : "#c8bda8",
+                        backgroundColor: isSelected ? "#8f1f2f" : "#fffaf2",
+                        borderRadius: 999,
+                        paddingVertical: 6,
+                        paddingHorizontal: 14,
+                        marginRight: 0,
+                      }}
+                    >
+                      <TextPrimitive
+                        variant="bodySm"
+                        style={{
+                          color: isSelected ? "#fffaf2" : "#4f463b",
+                          fontWeight: "800",
+                          letterSpacing: 0.5,
+                        }}
+                      >
+                        {filter}
+                      </TextPrimitive>
+                    </Pressable>
+                  );
+                })}
+              </Row>
+            ) : null}
 
 
 
@@ -1281,7 +1538,7 @@ export default function TableDetailScreen() {
                 </Surface>
               ) : (
                 <Stack gap={3} style={{ paddingTop: 2 }}>
-                  {selectedFilteredOrderCount === 0 ? (
+                  {!isSettlementMode && selectedFilteredOrderCount === 0 ? (
                     <Surface padding={3} style={{ backgroundColor: "#fffaf2", borderColor: "#c8bda8", borderWidth: 1 }}>
                       <Stack gap={1}>
                         <TextPrimitive variant="bodySm" style={{ color: "#6f6252", fontWeight: "900", letterSpacing: 0.7, textTransform: "uppercase" }}>
@@ -1301,6 +1558,18 @@ export default function TableDetailScreen() {
                     <Stack gap={1}>
                       {filteredActiveOrders.map((order) => {
                           const orderLabel = getOrderDisplayLabel(order);
+                          const isFinanciallyUnresolved =
+                            order.totalCents > 0 &&
+                            order.paidCents < order.totalCents;
+                          const canSettleOrder =
+                            isSettlementMode &&
+                            isFinanciallyUnresolved &&
+                            (order.status === "OPEN" ||
+                              order.status === "SENT");
+                          const isSettlementPending =
+                            settlementOrderId === order.id;
+                          const requiresSettlementRecovery =
+                            settlementSubmittedOrderId === order.id;
 
                           return (
                             <Surface key={order.id} padding={2} style={{ backgroundColor: "#fffaf2", borderColor: "#c8bda8", borderWidth: 1 }}>
@@ -1402,7 +1671,40 @@ export default function TableDetailScreen() {
                                     </Row>
                                   ))}
                                 </Stack>
-                                {order.status === "OPEN" ? (
+                                {canSettleOrder ? (
+                            <View style={{ gap: 8 }}>
+                              <Pressable
+                                accessibilityRole="button"
+                                disabled={isSettlementPending}
+                                onPress={() => {
+                                  if (requiresSettlementRecovery) {
+                                    void recoverSettlementPayment(order.id);
+                                    return;
+                                  }
+
+                                  void handleSettlementPay(order.id);
+                                }}
+                                style={{
+                                  minHeight: 44,
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  borderRadius: 8,
+                                  borderWidth: 1,
+                                  opacity: isSettlementPending ? 0.5 : 1,
+                                }}
+                              >
+                                <Text>
+                                  {isSettlementPending
+                                    ? "Processing..."
+                                    : requiresSettlementRecovery
+                                      ? "Recheck Payment"
+                                      : "Pay"}
+                                </Text>
+                              </Pressable>
+                            </View>
+                          ) : null}
+
+                          {order.status === "OPEN" ? (
                                   isManager || order.fullyPaid ? (
                                     <>
                                       <View style={{ height: 1, backgroundColor: "#c8bda8" }} />
