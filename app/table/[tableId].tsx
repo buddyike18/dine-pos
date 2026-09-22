@@ -2057,38 +2057,42 @@ export default function TableDetailScreen() {
                 onPress={() => router.push(`/table/${safeTableId}/order`)}
               />
 
-              <ButtonPrimitive
-                hierarchy="destructive"
-                label={resetPending ? "Resetting" : isResetBlocked ? "Reset Locked" : "Reset Table"}
-                disabled={resetPending || isResetBlocked || hasUnsafeConnectionState}
-                onPress={() => {
-                  setResetError(null);
-                  setShowResetConfirm(true);
-                }}
-              />
+              {isManager ? (
+                <ButtonPrimitive
+                  hierarchy="destructive"
+                  label={resetPending ? "Resetting" : isResetBlocked ? "Reset Locked" : "Reset Table"}
+                  disabled={resetPending || isResetBlocked || hasUnsafeConnectionState}
+                  onPress={() => {
+                    setResetError(null);
+                    setShowResetConfirm(true);
+                  }}
+                />
+              ) : null}
             </Stack>
           </View>
         </View>
 
-        <ModalShell
-          visible={showResetConfirm}
-          title="Reset Table"
-          description={
-            isResetBlocked
-              ? "Complete or close all orders before resetting"
-              : "Reset this table? This will clear all activity."
-          }
-          confirmLabel={resetPending ? "Resetting" : isResetBlocked ? "Reset Locked" : "Confirm Reset"}
-          cancelLabel="Cancel"
-          onConfirm={handleResetTable}
-          onCancel={() => {
-            if (resetPending) {
-              return;
+        {isManager ? (
+          <ModalShell
+            visible={showResetConfirm}
+            title="Reset Table"
+            description={
+              isResetBlocked
+                ? "Complete or close all orders before resetting"
+                : "Reset this table? This will clear all activity."
             }
+            confirmLabel={resetPending ? "Resetting" : isResetBlocked ? "Reset Locked" : "Confirm Reset"}
+            cancelLabel="Cancel"
+            onConfirm={handleResetTable}
+            onCancel={() => {
+              if (resetPending) {
+                return;
+              }
 
-            setShowResetConfirm(false);
-          }}
-        />
+              setShowResetConfirm(false);
+            }}
+          />
+        ) : null}
       </View>
     </View>
   );
