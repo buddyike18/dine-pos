@@ -2,10 +2,8 @@
 
 import React from "react";
 import {
-  Modal,
   View,
   ViewStyle,
-  Pressable,
 } from "react-native";
 
 import { Space } from "../../tokens/spacing";
@@ -78,9 +76,12 @@ export const ModalShell: React.FC<ModalShellProps> = ({
   }
 
   const overlayStyle: ViewStyle = {
-    flex: 1,
-    backgroundColor: overlayColor,
-    opacity: 0.4,
+    position: "absolute",
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    backgroundColor: `${overlayColor}66`,
     justifyContent: "center",
     alignItems: "center",
   };
@@ -90,15 +91,13 @@ export const ModalShell: React.FC<ModalShellProps> = ({
     maxWidth: 520,
   };
 
+  if (!visible) {
+    return null;
+  }
+
   return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="fade"
-      onRequestClose={() => {}} // explicit only
-    >
-      <Pressable style={overlayStyle} onPress={() => {}}>
-        <View style={containerStyle}>
+    <View style={overlayStyle}>
+      <View style={containerStyle}>
           <Surface
             padding={padding}
             radius={radius}
@@ -139,7 +138,6 @@ export const ModalShell: React.FC<ModalShellProps> = ({
             </Stack>
           </Surface>
         </View>
-      </Pressable>
-    </Modal>
+    </View>
   );
 };
