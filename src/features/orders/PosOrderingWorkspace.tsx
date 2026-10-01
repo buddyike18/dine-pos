@@ -4,6 +4,7 @@ import { Pressable, ScrollView, Text, View } from "react-native";
 
 import { FullScreenModeContainer } from "../../design-system";
 import { createOrder, getApiBase } from "../../lib/api";
+import type { CreateOrderItem } from "../../lib/api";
 import { getIdToken } from "../../lib/firebase";
 import { config } from '../../config';
 import { fetchWithTimeout } from '../../lib/network';
@@ -108,6 +109,10 @@ type PosOrderingWorkspaceProps = {
   onOrderCreated?: (orderId: string) => Promise<void> | void;
   onSendOrderCreated?: (orderId: string) => Promise<void> | void;
   onPayOrderCreated?: (orderId: string) => Promise<void> | void;
+  onSubmitItems?: (args: {
+    items: CreateOrderItem[];
+    token: string;
+  }) => Promise<void> | void;
   actionRunning?: boolean;
   onBarSendOrderCreated?: (orderId: string) => Promise<void> | void;
   onBarPayOrderCreated?: (orderId: string) => Promise<void> | void;
@@ -119,6 +124,7 @@ export default function PosOrderingWorkspace({
   onOrderCreated,
   onSendOrderCreated,
   onPayOrderCreated,
+  onSubmitItems,
   actionRunning = false,
   onBarSendOrderCreated,
   onBarPayOrderCreated,
@@ -639,6 +645,13 @@ export default function PosOrderingWorkspace({
           option_ids: modifier.optionIds,
         })),
       }));
+
+      if (onSubmitItems) {
+        await onSubmitItems({ items, token });
+        setSubmissionIdempotencyKey(null);
+        setCartItems([]);
+        return;
+      }
 
       const idempotencyKey =
         submissionIdempotencyKey ??

@@ -1,11 +1,12 @@
 import { useCallback, useState } from "react";
 import { Alert, Pressable, Text, View } from "react-native";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import * as Linking from "expo-linking";
 import { useStripe } from "@stripe/stripe-react-native";
 
 import PosOrderingWorkspace from "../src/features/orders/PosOrderingWorkspace";
 import {
+  appendQuickOrderItems,
   createPaymentIntent,
   getOrderById,
   updateOrderStatus,
@@ -32,6 +33,14 @@ function isSettledQuickOrder(order: Awaited<ReturnType<typeof getOrderById>>) {
 
 export default function QuickOrderScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{
+    existingOrderId?: string | string[];
+  }>();
+  const existingOrderId =
+    typeof params.existingOrderId === "string"
+      ? params.existingOrderId.trim()
+      : "";
+  const isAppendMode = existingOrderId.length > 0;
   const { initPaymentSheet, presentPaymentSheet } = useStripe();
 
   const [createdOrderId, setCreatedOrderId] =
@@ -323,8 +332,20 @@ export default function QuickOrderScreen() {
         unavailable: false,
         unavailableMessage: "Quick Order unavailable.",
       }}
-      onSendOrderCreated={sendCreatedOrder}
-      onPayOrderCreated={handleOrderCreated}
+      onSendOrderCreated={isAppendMode ? undefined : sendCreatedOrder}
+      onPayOrderCreated={isAppendMode ? undefined : handleOrderCreated}
+      onSubmitItems={
+        isAppendMode
+          ? async ({ items, token }) => {
+              await appendQuickOrderItems({
+                orderId: existingOrderId,
+                items,
+                token,
+              });
+              router.back();
+            }
+          : undefined
+      }
     />
   );
 }

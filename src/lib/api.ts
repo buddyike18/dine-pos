@@ -323,6 +323,31 @@ function extractArrayOrThrow(data: any, op: string, paths: string[][]): any[] {
  * Phase 6.7: Fetch a single order by id for the Order Details screen.
  */
 
+export async function appendQuickOrderItems(args: {
+  orderId: string;
+  items: CreateOrderItem[];
+  token: string;
+}) {
+  const { orderId, items, token } = args;
+
+  const res = await fetchWithTimeout(buildUrl(`/api/orders/${orderId}/items`), {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+      'X-Client': 'dine-pos',
+      'X-Platform': Platform.OS,
+    },
+    body: JSON.stringify({ items }),
+  });
+
+  return getJsonOrThrow(res, 'appendQuickOrderItems') as Promise<{
+    order: BackendOrder;
+    items_added: number;
+  }>;
+}
+
 export async function getOrderById(orderId: string, token: string): Promise<any> {
   if (!orderId) throw new Error('getOrderById requires orderId');
   if (!token) {
